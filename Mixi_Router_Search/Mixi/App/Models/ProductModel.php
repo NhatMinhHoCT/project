@@ -1,0 +1,139 @@
+<?php
+namespace App\Models;
+    class ProductModel{
+        private $db;
+        function __construct(){
+            $this->db = new DatabaseModel;
+        }
+        function sanpham_get_all($view,$limit){
+            $sql="select * from sanpham where 1";
+            if ($view>0){
+                $sql.=" order by ViewSP desc limit ".$limit;
+            }else{
+                $sql.=" order by IDSP desc limit ".$limit;
+            }
+            return $this->db->get_all($sql);
+
+        }
+
+
+        function danhmuc_get_all(){
+          $sql="select * from danhmuc order by IDDM asc";
+
+          return $this->db->get_all($sql);
+        }
+
+        
+
+        function sanpham_get_all_catalog($kyw,$idcatalog,$slsp,$sotrang){
+            $sql="select * from sanpham where 1";
+            if ($idcatalog>0){
+                $sql.=" AND MaDM= ".$idcatalog;
+            }
+            if($kyw!=""){
+                $sql.=" AND TenSP LIKE '%".$kyw."%'";
+            }
+
+            $limit1=($sotrang-1)*$slsp;
+            $limit2=$slsp;
+
+            $sql.=" order by IDSP desc limit ".$limit1.",".$limit2;
+            return $this->db->get_all($sql);
+        }
+
+ 
+        function sanpham_search($keyword){
+          $sql="SELECT * FROM sanpham WHERE TenSP LIKE '%$keyword%'";
+          return $this->db->get_all($sql);
+        }
+
+        function sanpham_get_one($id){
+          $sql="select * from sanpham where IDSP=?";
+          return $this->db->get_one($sql,$id);
+        }
+        
+
+
+        function show_products($dssp){
+            $html_dssp_home='';
+                foreach ($dssp as $item) {
+                extract($item);
+
+                $hrefsp=BASE_PATH . 'product/detail/'.$IDSP;
+                $GiaSPForm = number_format($GiaSP, 0, ',', '.');
+            $html_dssp_home.= '
+                <div class="col-lg-4 col-md-6">
+                  <div class="item">
+                    <a href="'.$hrefsp.'"><img src="'.BASE_PATH.'Public/template/assets/images/'.$HinhAnhSP.'" alt="'.$TenSP.'"></a>
+                    <span class="category">'.$HangSP.'</span>
+                    <h6>'.$GiaSPForm.' VND</h6>
+                    <h4 class="text-center"><a href="'.$hrefsp.'" >'.$TenSP.'</a></h4>
+            
+                    <div class="main-button">
+                      <a href="'.BASE_PATH.'addcart/'.$IDSP.'">Thêm vào giỏ hàng</a>
+                    </div>
+                  </div>
+                </div>';
+            }
+            return  $html_dssp_home;
+        }
+
+
+        function show_all_products($dssp){
+            $html_dssp_all_product='';
+                foreach ($dssp as $item) {
+                extract($item);
+                $hrefsp=BASE_PATH . 'product/detail/'.$IDSP;
+                $GiaSPForm = number_format($GiaSP, 0, ',', '.');
+                $html_dssp_all_product.= '
+                <div class="col-lg-4 col-md-6 align-self-center mb-30 properties-items col-md-6 adv">
+                <div class="item">
+                  <a href="'.$hrefsp.'"><img src="'.BASE_PATH.'Public/template/assets/images/'.$HinhAnhSP.'" alt=""></a>
+                  <span class="category">'.$HangSP.'</span>
+                  <h6>'.$GiaSPForm.' VND</h6>
+                  <h4 class="text-center"><a href="'.$hrefsp.'">'.$TenSP.'</a></h4>
+                  
+                  <div class="main-button">
+                  <a href="'.BASE_PATH.'addcart/'.$IDSP.'">Thêm vào giỏ hàng</a>
+                    
+                  </div>
+                </div>
+              </div>
+            
+            ';
+            }
+            return  $html_dssp_all_product;
+        }
+
+       
+        function show_tt($dssp){
+          $html_dssp_all_product='';
+              foreach ($dssp as $item) {
+              extract($item);
+              $hrefsp=BASE_PATH . 'product/detail/'.$IDSP;
+              $GiaSPForm = number_format($GiaSP, 0, ',', '.');
+              $html_dssp_all_product.= '
+              <div class="col-lg-4 col-md-6 align-self-center mb-30 properties-items col-md-6 adv">
+              <div class="item">
+                <a href="'.$hrefsp.'"><img src="'.BASE_PATH.'Public/template/assets/images/'.$HinhAnhSP.'" alt=""></a>
+                <span class="category">'.$HangSP.'</span>
+                <h6>'.$GiaSPForm.' VND</h6>
+                <h4 class="text-center"><a href="'.$hrefsp.'">'.$TenSP.'</a></h4>
+                
+                <div class="main-button">
+                <a href="'.BASE_PATH.'addcart/'.$IDSP.'">Thêm vào giỏ hàng</a>
+                  
+                </div>
+              </div>
+            </div>
+          
+          ';
+          }
+          return  $html_dssp_all_product;
+      }
+        
+
+
+    }
+
+?>
