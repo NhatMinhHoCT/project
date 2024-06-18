@@ -72,3 +72,50 @@
 </body>
 
 </html>
+
+To link the main.js file located in the resources/js folder from your Blade file inside the views folder, you can use the asset helper function provided by Laravel. Here's how you can do it:
+
+First, make sure that the main.js file is included in the resources/js/app.js file. This is necessary because Laravel's asset pipeline compiles and bundles all JavaScript files referenced in app.js.
+In resources/js/app.js, add the following line:
+
+import './main.js';
+
+
+
+In your Blade file (e.g., resources/views/your-view.blade.php), you can link the compiled JavaScript file using the asset helper function:
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your View</title>
+</head>
+<body>
+    <!-- Your HTML content -->
+
+    <!-- Link the compiled JavaScript file -->
+    <script src="{{ asset('js/app.js') }}"></script>
+</body>
+</html>
+
+
+
+The asset helper function generates the correct URL for the compiled JavaScript file based on your application's public path.
+
+Make sure to run the following command to compile your JavaScript assets:
+npm run dev
+
+
+
+This command will compile your JavaScript files, including main.js, and create the public/js/app.js file, which you can then link in your Blade file.
+
+After following these steps, your main.js file will be included in the compiled app.js file, and you can access its functionality in your Blade view.
+
+Note that if you make changes to your JavaScript files, you'll need to re-run the npm run dev command to recompile the assets and see the changes reflected in your application.
+
+
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+
