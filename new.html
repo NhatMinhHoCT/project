@@ -119,3 +119,39 @@ Try again with different context
 Add context...
 Avatar for honhatminh1510-cfizq
 
+
+
+To count the active schedules for a specific date in Laravel Eloquent, you can use a query with a whereNotExists subquery to exclude the schedules that have a cancellation record for the given date.
+
+Here's an example of how you can do it:
+
+use Illuminate\Support\Carbon;
+
+$date = Carbon::parse('2024-06-24'); // Replace with the desired date
+
+$activeSchedulesCount = \App\Models\Schedule::whereNotExists(function ($query) use ($date) {
+    $query->select('schedule_id')
+          ->from('schedule_cancels')
+          ->whereRaw('? BETWEEN start_cancel AND end_cancel', [$date->toDateString()])
+          ->whereColumn('schedule_cancels.schedule_id', 'schedules.id');
+})->count();
+
+
+
+Let's break down the code:
+
+First, we create a Carbon instance with the desired date using Carbon::parse('2024-06-24').
+
+Then, we use the whereNotExists method on the Schedule model to exclude schedules that have a cancellation record for the given date.
+
+Inside the whereNotExists closure, we define a subquery that selects the schedule_id from the schedule_cancels table where the given date falls between the start_cancel and end_cancel dates.
+
+We use the whereRaw method to construct a raw SQL condition that checks if the given date is between start_cancel and end_cancel. The ? placeholder is used to bind the date value.
+
+We also add a whereColumn condition to match the schedule_id from the schedule_cancels table with the id column in the schedules table.
+
+Finally, we call the count() method on the main query to get the count of active schedules.
+
+The resulting $activeSchedulesCount variable will contain the count of active schedules for the specified date.
+
+Note: Make sure to replace \App\Models\Schedule with the actual namespace and class name of your Schedule model. Also, adjust the table and column names according to your database schema.
