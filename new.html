@@ -181,3 +181,158 @@ if ($request->has('ticketcount')) {
 $results = $query->select('roads.start_point', 'roads.end_point', 'roads.duration', 'schedules.departure_time', 'tickets.date_of_depart')
                   ->groupBy('schedules.id', 'tickets.date_of_depart')
                   ->get();
+
+
+
+
+
+To achieve this, you can use a combination of JOIN and subqueries to retrieve the desired information. Here's an example query that should work:
+
+SELECT
+    s.id AS schedule_id,
+    s.departure_time,
+    r.start_point,
+    r.end_point,
+    COALESCE(t.ticket_count, 0) AS ticket_count
+FROM
+    schedules s
+JOIN
+    roads r ON s.road_id = r.id
+LEFT JOIN
+    (
+        SELECT
+            schedule_id,
+            COUNT(*) AS ticket_count
+        FROM
+            tickets
+        WHERE
+            date_of_depart = '2024-07-01'
+        GROUP BY
+            schedule_id
+    ) t ON s.id = t.schedule_id
+WHERE
+    r.start_point = ? AND r.end_point = ?
+ORDER BY
+    s.departure_time;
+
+
+
+Here's a breakdown of the query:
+
+The main query selects the schedule_id, departure_time, start_point, end_point, and ticket_count columns.
+The schedules table is joined with the roads table using the road_id foreign key.
+A subquery is used to count the number of tickets for each schedule_id on the specified date (2024-07-01). This subquery is LEFT JOINed with the main query to include schedules that have no tickets.
+The COALESCE function is used to replace NULL values (for schedules with no tickets) with 0.
+The WHERE clause filters the results based on the start_point and end_point parameters.
+The results are ordered by departure_time.
+You can replace the ? placeholders with the actual values for start_point and end_point obtained from the GET form.
+
+This query will return all the schedules for the specified date, along with the start and end points, departure time, and the number of tickets booked for each schedule. If there are no tickets booked for a particular schedule, the ticket_count will be 0.
+
+
+
+Try again with different context
+Public knowledge only
+Add context...
+Avatar for honhatminh1510-cfizq
+ i have 3 tables, table roads contains id, start_point, end_point;table schedules contains id, road_id, departure_time(eg: 04:00 AM); table tickets has id, schedule_id, date_of_depart(eg 2024/06/20). The schedules will run and repeat each day, but the tickets on each day may vary. I want to query the schedules on 1 day (example like 2024/07/01), with parameters from get form are start_point, end_point, date, ticket_booking_quantity. The query should return all the schedules on that day and count the number of ticket for each schedule, if there is no ticket on this schedule, it will count as 0.
+I forgot to say that i used eloquent ORM to query
+
+If you're using Eloquent ORM in Laravel, you can achieve the desired result by using relationships and subqueries. Here's an example of how you can query the schedules with the required conditions:
+
+use Illuminate\Support\Facades\DB;
+
+$startPoint = request()->input('start_point');
+$endPoint = request()->input('end_point');
+$date = request()->input('date');
+$ticketBookingQuantity = request()->input('ticket_booking_quantity');
+
+$schedules = Schedule::whereHas('road', function ($query) use ($startPoint, $endPoint) {
+    $query->where('start_point', $startPoint)
+          ->where('end_point', $endPoint);
+})
+->with(['road', 'tickets' => function ($query) use ($date) {
+    $query->whereDate('date_of_depart', $date);
+}])
+->get()
+->map(function ($schedule) use ($ticketBookingQuantity) {
+    $ticketCount = $schedule->tickets->count();
+    $schedule->ticket_count = $ticketCount >= $ticketBookingQuantity ? $ticketCount : 0;
+    return $schedule;
+});
+
+
+
+Here's a breakdown of the code:
+
+First, we retrieve the start_point, end_point, date, and ticket_booking_quantity values from the request.
+We use the whereHas method to filter the Schedule model based on the start_point and end_point conditions. This method uses the road relationship to access the roads table.
+We use the with method to eager load the road and tickets relationships. For the tickets relationship, we filter the tickets based on the date_of_depart condition.
+We use the get method to retrieve the filtered schedules.
+We use the map method to iterate over the retrieved schedules and calculate the ticket_count for each schedule.
+If the number of tickets for a schedule is greater than or equal to the ticket_booking_quantity, we set the ticket_count to the actual count of tickets.
+If the number of tickets for a schedule is less than the ticket_booking_quantity, we set the ticket_count to 0.
+The modified schedules with the ticket_count property are returned.
+Assuming you have the following relationships defined in your models:
+
+// Road model
+class Road extends Model
+{
+    public function schedules()
+    {
+        return $this->hasMany(Schedule::class);
+    }
+}
+
+// Schedule model
+class Schedule extends Model
+{
+    public function road()
+    {
+        return $this->belongsTo(Road::class);
+    }
+
+    public function tickets()
+    {
+        return $this->hasMany(Ticket::class);
+    }
+}
+
+// Ticket model
+class Ticket extends Model
+{
+    public function schedule()
+    {
+        return $this->belongsTo(Schedule::class);
+    }
+}
+
+
+
+This code should give you the desired result, where you'll get all the schedules for the specified date, along with the start and end points, and the ticket_count for each schedule, considering the ticket_booking_quantity condition.
+
+
+use Illuminate\Support\Facades\DB;
+
+$startPoint = request()->input('start_point');
+$endPoint = request()->input('end_point');
+$date = request()->input('date');
+$ticketBookingQuantity = request()->input('ticket_booking_quantity');
+
+$schedules = Schedule::whereHas('road', function ($query) use ($startPoint, $endPoint) {
+    $query->where('start_point', $startPoint)
+          ->where('end_point', $endPoint);
+})
+->with(['road', 'tickets' => function ($query) use ($date) {
+    $query->whereDate('date_of_depart', $date);
+}])
+->addSelect([
+    'available_seats' => DB::raw('34 - COALESCE((
+        SELECT SUM(t.ticket_booking_quantity)
+        FROM tickets t
+        WHERE t.schedule_id = schedules.id
+        AND t.date_of_depart = ?
+    ), 0)')
+])
+->having('available_seats', '>=', $ticketBookingQuantity)
+->get();
