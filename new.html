@@ -155,3 +155,29 @@ Finally, we call the count() method on the main query to get the count of active
 The resulting $activeSchedulesCount variable will contain the count of active schedules for the specified date.
 
 Note: Make sure to replace \App\Models\Schedule with the actual namespace and class name of your Schedule model. Also, adjust the table and column names according to your database schema.
+$query = Ticket::join('schedules', 'tickets.schedule_id', '=', 'schedules.id')
+                ->join('roads', 'schedules.road_id', '=', 'roads.id');
+
+// Filter by start_point
+if ($request->has('start_point')) {
+    $query->where('roads.start_point', $request->input('start_point'));
+}
+
+// Filter by end_point
+if ($request->has('end_point')) {
+    $query->where('roads.end_point', $request->input('end_point'));
+}
+
+// Filter by date_of_depart
+if ($request->has('date')) {
+    $query->whereDate('tickets.date_of_depart', $request->input('date'));
+}
+
+// Filter by ticketcount (assuming you want to check for available seats)
+if ($request->has('ticketcount')) {
+    $query->havingRaw('COUNT(tickets.id) < ?', [$request->input('ticketcount')]);
+}
+
+$results = $query->select('roads.start_point', 'roads.end_point', 'roads.duration', 'schedules.departure_time', 'tickets.date_of_depart')
+                  ->groupBy('schedules.id', 'tickets.date_of_depart')
+                  ->get();
