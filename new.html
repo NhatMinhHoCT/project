@@ -336,3 +336,166 @@ $schedules = Schedule::whereHas('road', function ($query) use ($startPoint, $end
 ])
 ->having('available_seats', '>=', $ticketBookingQuantity)
 ->get();
+
+Certainly! I'll provide you with a code sample that demonstrates how to implement AJAX-based search and pagination for a Laravel table display. This example will include both the Laravel backend and the JavaScript/jQuery frontend code.
+
+First, let's start with the Laravel controller:
+
+// app/Http/Controllers/DataController.php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\YourModel;
+
+class DataController extends Controller
+{
+    public function index(Request $request)
+    {
+        $query = YourModel::query();
+
+        if ($request->has('search')) {
+            $searchTerm = $request->input('search');
+            $query->where('column_name', 'LIKE', "%{$searchTerm}%");
+        }
+
+        $perPage = 10; // Number of items per page
+        $page = $request->input('page', 1);
+        $data = $query->paginate($perPage, ['*'], 'page', $page);
+
+        if ($request->ajax()) {
+            return response()->json([
+                'data' => view('partials.table_rows', compact('data'))->render(),
+                'pagination' => view('partials.pagination', compact('data'))->render(),
+            ]);
+        }
+
+        return view('data_table', compact('data'));
+    }
+}
+
+
+
+Now, let's create the main view and the partial views:
+
+<!-- resources/views/data_table.blade.php -->
+
+@extends('layouts.app')
+
+@section('content')
+    <div class="container">
+        <h1>Data Table</h1>
+        <input type="text" id="search" placeholder="Search...">
+        <table id="data-table">
+            <thead>
+                <tr>
+                    <th>Column 1</th>
+                    <th>Column 2</th>
+                    <!-- Add more columns as needed -->
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                @include('partials.table_rows', ['data' => $data])
+            </tbody>
+        </table>
+        <div id="pagination">
+            @include('partials.pagination', ['data' => $data])
+        </div>
+    </div>
+@endsection
+
+@push('scripts')
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    $(document).ready(function() {
+        function loadData(url) {
+            $.ajax({
+                url: url,
+                type: 'GET',
+                data: {
+                    search: $('#search').val()
+                },
+                success: function(response) {
+                    $('#table-body').html(response.data);
+                    $('#pagination').html(response.pagination);
+                    history.pushState(null, '', url);
+                }
+            });
+        }
+
+        $('#search').on('keyup', function() {
+            loadData('{{ route("data.index") }}');
+        });
+
+        $(document).on('click', '.pagination-btn', function(e) {
+            e.preventDefault();
+            loadData($(this).val());
+        });
+    });
+</script>
+@endpush
+
+
+
+Create the partial views for table rows and pagination:
+
+<!-- resources/views/partials/table_rows.blade.php -->
+
+@foreach ($data as $item)
+    <tr>
+        <td>{{ $item->column1 }}</td>
+        <td>{{ $item->column2 }}</td>
+        <!-- Add more columns as needed -->
+    </tr>
+@endforeach
+
+
+
+<!-- resources/views/partials/pagination.blade.php -->
+
+@if ($data->hasPages())
+    <div class="pagination">
+        @if ($data->onFirstPage())
+            <button class="pagination-btn" disabled>Previous</button>
+        @else
+            <button class="pagination-btn" value="{{ $data->previousPageUrl() }}">Previous</button>
+        @endif
+
+        @foreach ($data->getUrlRange(1, $data->lastPage()) as $page => $url)
+            <button class="pagination-btn" value="{{ $url }}" {{ $page == $data->currentPage() ? 'disabled' : '' }}>
+                {{ $page }}
+            </button>
+        @endforeach
+
+        @if ($data->hasMorePages())
+            <button class="pagination-btn" value="{{ $data->nextPageUrl() }}">Next</button>
+        @else
+            <button class="pagination-btn" disabled>Next</button>
+        @endif
+    </div>
+@endif
+
+
+
+Finally, add the route in your routes/web.php file:
+
+Route::get('/data', [DataController::class, 'index'])->name('data.index');
+
+
+
+This code sample provides:
+
+A Laravel controller that handles both the initial page load and AJAX requests.
+A main view that displays the table and includes the search input and pagination.
+Partial views for table rows and pagination buttons.
+JavaScript code that handles the AJAX requests for search and pagination.
+URL updates using history.pushState() to reflect the current page without reloading.
+When you search or click on a pagination button, it will load the data without reloading the page and update the URL accordingly. The pagination buttons use the current URL with query parameters as their values, as requested.
+
+Remember to adjust the model name, column names, and styling to fit your specific needs.
+
+
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
