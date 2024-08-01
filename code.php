@@ -778,3 +778,92 @@ This approach provides a clean, maintainable structure while accommodating the d
 
 Try again with different context
 Add context...
+
+Certainly! Adding a reload button is a great way to allow users to refresh the data without reloading the entire page. Here's how you can implement this:
+
+Update your table_unit.blade.php to include a reload button:
+<div class="d-flex justify-content-between mb-3">
+    <button class="btn btn-primary add-row" data-type="{{ $type }}">Add New Row</button>
+    <button class="btn btn-secondary reload-table" data-type="{{ $type }}">
+        <i class="fas fa-sync-alt"></i> Reload
+    </button>
+</div>
+<table class="table unit-table" data-type="{{ $type }}">
+    <!-- ... rest of your table code ... -->
+</table>
+
+
+
+Update your JavaScript in unit.blade.php to handle the reload functionality:
+@section('scripts')
+<script>
+$(document).ready(function() {
+    // Load initial tab content
+    loadTabContent('time');
+
+    // Tab click event
+    $('#unitTabs a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+        var type = $(e.target).data('type');
+        loadTabContent(type);
+    });
+
+    // Reload button click event
+    $(document).on('click', '.reload-table', function() {
+        var type = $(this).data('type');
+        loadTabContent(type);
+    });
+
+    function loadTabContent(type) {
+        var tabPane = $('#' + type);
+        // Show loading indicator
+        tabPane.html('<div class="text-center"><i class="fas fa-spinner fa-spin fa-3x"></i></div>');
+        
+        $.ajax({
+            url: '/units/table/' + type,
+            method: 'GET',
+            success: function(response) {
+                tabPane.html(response);
+            },
+            error: function() {
+                tabPane.html('<div class="alert alert-danger">Failed to load data. Please try again.</div>');
+            }
+        });
+    }
+
+    // ... (rest of your JavaScript for handling table interactions)
+});
+</script>
+@endsection
+
+
+
+Make sure you have Font Awesome or a similar icon library included in your project for the reload icon. If you're not using Font Awesome, you can replace <i class="fas fa-sync-alt"></i> with any other icon or just text.
+
+Optionally, you can add a loading indicator to show that the table is being reloaded. This is already included in the loadTabContent function above.
+
+If you want to prevent rapid successive reloads, you can add a simple debounce:
+
+let reloadTimeout;
+$(document).on('click', '.reload-table', function() {
+    var type = $(this).data('type');
+    clearTimeout(reloadTimeout);
+    reloadTimeout = setTimeout(function() {
+        loadTabContent(type);
+    }, 300); // 300ms debounce
+});
+
+
+
+This implementation will:
+
+Add a reload button next to the "Add New Row" button.
+Reload only the specific table content when the reload button is clicked.
+Show a loading indicator while the table is being reloaded.
+Handle potential errors during reloading.
+Remember to style your buttons and loading indicator as needed to match your application's design. Also, ensure that your server-side code in the getTable method of your UnitController is fetching the most up-to-date data each time it's called.
+
+
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
