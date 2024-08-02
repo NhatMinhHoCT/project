@@ -867,3 +867,182 @@ Remember to style your buttons and loading indicator as needed to match your app
 Try again with different context
 Add context...
 Avatar for honhatminh1510-cfizq
+
+I understand. You want to have multiple new rows added before saving them all at once. Let's modify the code to accommodate this requirement. Here's how we can implement this:
+
+Update the table_unit.blade.php to include a single save button:
+<div class="d-flex justify-content-between mb-3">
+    <div>
+        <button class="btn btn-primary add-row" data-type="{{ $type }}">Add New Row</button>
+        <button class="btn btn-success save-new-units" style="display: none;">Save New Units</button>
+    </div>
+    <button class="btn btn-secondary reload-table" data-type="{{ $type }}">
+        <i class="fas fa-sync-alt"></i> Reload
+    </button>
+</div>
+<table class="table unit-table" data-type="{{ $type }}">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Symbol</th>
+            <th>Note</th>
+            @if($type === 'currency')
+                <th>Country</th>
+            @endif
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach($units as $index => $unit)
+        <tr data-id="{{ $unit->id }}">
+            <td><input type="text" name="ordinal" value="{{ $index + 1 }}" class="form-control" readonly></td>
+            <td><input type="text" name="name" value="{{ $unit->name }}" class="form-control"></td>
+            <td><input type="text" name="symbol" value="{{ $unit->symbol }}" class="form-control"></td>
+            <td><input type="text" name="note" value="{{ $unit->note }}" class="form-control"></td>
+            @if($type === 'currency')
+                <td><input type="text" name="country" value="{{ $unit->country ?? '' }}" class="form-control"></td>
+            @endif
+            <td>
+                <div class="dropdown">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" data-toggle="dropdown">⋮</button>
+                    <div class="dropdown-menu">
+                        <a class="dropdown-item delete-unit" href="#">Delete</a>
+                    </div>
+                </div>
+            </td>
+        </tr>
+        @endforeach
+    </tbody>
+</table>
+
+
+
+Update the JavaScript in unit.blade.php:
+@section('scripts')
+<script>
+$(document).ready(function() {
+    // ... (previous code remains the same)
+
+    // Add new row
+    $(document).on('click', '.add-row', function() {
+        var type = $(this).data('type');
+        addNewRow(type);
+        $('.save-new-units').show();
+    });
+
+    function addNewRow(type) {
+        var table = $('.unit-table[data-type="' + type + '"] tbody');
+        var newOrdinal = table.find('tr').length + 1;
+        var newRow = `
+            <tr class="new-unit-row">
+                <td><input type="text" name="ordinal" value="${newOrdinal}" class="form-control" readonly></td>
+                <td><input type="text" name="name" class="form-control"></td>
+                <td><input type="text" name="symbol" class="form-control"></td>
+                <td><input type="text" name="note" class="form-control"></td>
+                ${type === 'currency' ? '<td><input type="text" name="country" class="form-control"></td>' : ''}
+                <td>
+                    <button class="btn btn-danger remove-new-row">Remove</button>
+                </td>
+            </tr>
+        `;
+        table.append(newRow);
+    }
+
+    // Remove new row
+    $(document).on('click', '.remove-new-row', function() {
+        $(this).closest('tr').remove();
+        if ($('.new-unit-row').length === 0) {
+            $('.save-new-units').hide();
+        }
+    });
+
+    // Save new units
+    $(document).on('click', '.save-new-units', function() {
+        var type = $('.unit-table').data('type');
+        var newUnits = [];
+
+        $('.new-unit-row').each(function() {
+            var row = $(this);
+            var unit = {
+                type: type,
+                name: row.find('input[name="name"]').val(),
+                symbol: row.find('input[name="symbol"]').val(),
+                note: row.find('input[name="note"]').val()
+            };
+            if (type === 'currency') {
+                unit.country = row.find('input[name="country"]').val();
+            }
+            newUnits.push(unit);
+        });
+
+        if (newUnits.length > 0) {
+            $.ajax({
+                url: '/units/store-multiple',
+                method: 'POST',
+                data: { units: newUnits },
+                success: function(response) {
+                    if (response.success) {
+                        alert('New units saved successfully!');
+                        loadTabContent(type);
+                    } else {
+                        alert('Error saving units. Please try again.');
+                    }
+                },
+                error: function() {
+                    alert('Error saving units. Please try again.');
+                }
+            });
+        }
+    });
+
+    // ... (rest of your JavaScript code)
+});
+</script>
+@endsection
+
+
+
+Update your UnitController to handle multiple unit insertions:
+class UnitController extends Controller
+{
+    // ... (other methods remain the same)
+
+    public function storeMultiple(Request $request)
+    {
+        $units = $request->input('units');
+        
+        DB::beginTransaction();
+        try {
+            foreach ($units as $unitData) {
+                Unit::create($unitData);
+            }
+            DB::commit();
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            DB::rollback();
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+}
+
+
+
+Add a new route in web.php:
+Route::post('/units/store-multiple', [UnitController::class, 'storeMultiple']);
+
+
+
+This implementation will:
+
+Allow adding multiple new rows before saving.
+Show a "Save New Units" button when there are new rows to save.
+Send all new units to the server in a single request.
+Use a database transaction to ensure all units are saved or none are.
+Reload the table after successful saving.
+Remember to adjust the error handling and success messages as needed for your application. Also, consider adding client-side validation before sending the data to the server, and ensure your server-side validation in the UnitController is robust enough to handle multiple unit insertions.
+
+
+
+Try again with different context
+Add context...
