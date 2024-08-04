@@ -1,0 +1,359 @@
+I apologize for the confusion. Let's adjust the code to use jQuery AJAX instead of fetch, and I'll show you how to handle validation errors properly. Here's the updated JavaScript code:
+
+let changedData = {};
+
+function addRow() {
+    var table = $('#currencyTable');
+    var newRow = $('<tr>');
+    var cols = table.find('thead th').length;
+    
+    for (var i = 0; i < cols; i++) {
+        var cell = $('<td>');
+        var input = $('<input>', {
+            type: 'text',
+            class: 'form-control',
+            blur: validateInput,
+            change: trackChanges
+        });
+        var feedback = $('<div>', {
+            class: 'error-feedback'
+        });
+        cell.append(input, feedback);
+        newRow.append(cell);
+    }
+
+    newRow.attr('data-new-row', 'true');
+    table.append(newRow);
+}
+
+function validateInput() {
+    var input = $(this);
+    var feedback = input.next('.error-feedback');
+    if (input.val().trim() === '') {
+        input.addClass('is-invalid');
+        feedback.text('This field is required');
+    } else if (input.val().length > 255) {
+        input.addClass('is-invalid');
+        feedback.text('Maximum length is 255 characters');
+    } else {
+        input.removeClass('is-invalid');
+        feedback.text('');
+    }
+}
+
+function trackChanges() {
+    var input = $(this);
+    var row = input.closest('tr');
+    var rowIndex = row.index();
+    var columnIndex = input.closest('td').index();
+
+    if (!changedData[rowIndex]) {
+        changedData[rowIndex] = {};
+    }
+
+    var fieldName;
+    switch (columnIndex) {
+        case 0: fieldName = 'id'; break;
+        case 1: fieldName = 'code'; break;
+        case 2: fieldName = 'exchange_rate'; break;
+    }
+
+    changedData[rowIndex][fieldName] = input.val();
+
+    if (row.attr('data-new-row') === 'true') {
+        ['id', 'code', 'exchange_rate'].forEach((field, index) => {
+            if (!changedData[rowIndex][field]) {
+                changedData[rowIndex][field] = row.find('td').eq(index).find('input').val();
+            }
+        });
+    }
+}
+
+function saveData() {
+    var dataToSend = Object.values(changedData);
+
+    $.ajax({
+        url: '/api/currencies',
+        method: 'POST',
+        data: JSON.stringify({ data: dataToSend }),
+        contentType: 'application/json',
+        headers: {
+            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+        },
+        success: function(result) {
+            console.log(result);
+            alert('Data saved successfully');
+            clearAllErrors();
+            changedData = {}; // Reset changed data after successful save
+        },
+        error: function(jqXHR) {
+            console.error('Error:', jqXHR.responseJSON);
+            if (jqXHR.responseJSON && jqXHR.responseJSON.errors) {
+                handleValidationErrors(jqXHR.responseJSON.errors);
+            }
+        }
+    });
+}
+
+function handleValidationErrors(errors) {
+    clearAllErrors();
+    var table = $('#currencyTable');
+    $.each(errors, function(key, messages) {
+        var matches = key.match(/data\.(\d+)\.(\w+)/);
+        if (matches) {
+            var dataIndex = parseInt(matches[1]);
+            var columnName = matches[2];
+            var rowIndex = Object.keys(changedData).find(key => parseInt(key) === dataIndex);
+            if (rowIndex !== undefined) {
+                var columnIndex;
+                switch (columnName) {
+                    case 'id': columnIndex = 0; break;
+                    case 'code': columnIndex = 1; break;
+                    case 'exchange_rate': columnIndex = 2; break;
+                }
+                var cell = table.find('tr').eq(parseInt(rowIndex) + 1).find('td').eq(columnIndex);
+                var input = cell.find('input');
+                var feedback = cell.find('.error-feedback');
+                input.addClass('is-invalid');
+                feedback.text(messages[0]);
+            }
+        }
+    });
+}
+
+function clearAllErrors() {
+    $('#currencyTable tr').each(function() {
+        $(this).find('td').each(function() {
+            var input = $(this).find('input');
+            var feedback = $(this).find('.error-feedback');
+            input.removeClass('is-invalid');
+            feedback.text('');
+        });
+    });
+}
+
+// Initialize event handlers
+$(document).ready(function() {
+    $('#addRowBtn').click(addRow);
+    $('#saveDataBtn').click(saveData);
+});
+
+
+
+Key changes and explanations:
+
+jQuery AJAX:
+
+We're now using $.ajax() instead of fetch().
+The success and error handling is done within the AJAX call.
+Error Handling:
+
+In the error callback of the AJAX call, we check for jqXHR.responseJSON.errors.
+If present, we pass these errors to handleValidationErrors().
+Validation Errors Display:
+
+The handleValidationErrors() function remains similar but uses jQuery selectors.
+It maps the error keys to table rows and cells, displaying errors for each invalid field.
+jQuery Selectors:
+
+We've replaced most DOM manipulations with jQuery equivalents for consistency.
+Event Binding:
+
+At the bottom, we've added a $(document).ready() block to bind click events to buttons.
+To use this code:
+
+Ensure you have jQuery included in your project.
+Add id attributes to your "Add Row" and "Save Data" buttons:
+<button id="addRowBtn" class="btn btn-primary">Add Row</button>
+<button id="saveDataBtn" class="btn btn-success">Save</button>
+
+
+
+Make sure your Laravel backend is set up to return validation errors in the expected format (which it should do by default with CurrencyRequest).
+This setup will:
+
+Only send changed or new data to the server.
+Handle validation errors returned from the server.
+Display these errors next to the corresponding input fields.
+Clear errors when attempting to save again or after a successful save.
+Remember to adjust the field names and validation rules in your CurrencyRequest if they differ from this example.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+i dont want to use the csrf on header, is it safe. Because the js scripts will be stored at one file call func.js in the public/assets/js folder
+
+
+You're right to be cautious about CSRF protection. Storing the CSRF token in a JavaScript file in the public folder is not recommended for security reasons. Instead, we can use Laravel's built-in CSRF protection without exposing the token in our JavaScript file. Here's a safer approach:
+
+In your Blade template, include the CSRF token as a meta tag:
+<meta name="csrf-token" content="{{ csrf_token() }}">
+
+
+
+In your func.js file (located at public/assets/js/func.js), modify the AJAX call to use the CSRF token from the meta tag:
+let changedData = {};
+
+function addRow() {
+    var table = $('#currencyTable');
+    var newRow = $('<tr>');
+    var cols = table.find('thead th').length;
+    
+    for (var i = 0; i < cols; i++) {
+        var cell = $('<td>');
+        var input = $('<input>', {
+            type: 'text',
+            class: 'form-control',
+            blur: validateInput,
+            change: trackChanges
+        });
+        var feedback = $('<div>', {
+            class: 'error-feedback'
+        });
+        cell.append(input, feedback);
+        newRow.append(cell);
+    }
+
+    newRow.attr('data-new-row', 'true');
+    table.append(newRow);
+}
+
+function validateInput() {
+    var input = $(this);
+    var feedback = input.next('.error-feedback');
+    if (input.val().trim() === '') {
+        input.addClass('is-invalid');
+        feedback.text('This field is required');
+    } else if (input.val().length > 255) {
+        input.addClass('is-invalid');
+        feedback.text('Maximum length is 255 characters');
+    } else {
+        input.removeClass('is-invalid');
+        feedback.text('');
+    }
+}
+
+function trackChanges() {
+    var input = $(this);
+    var row = input.closest('tr');
+    var rowIndex = row.index();
+    var columnIndex = input.closest('td').index();
+
+    if (!changedData[rowIndex]) {
+        changedData[rowIndex] = {};
+    }
+
+    var fieldName;
+    switch (columnIndex) {
+        case 0: fieldName = 'id'; break;
+        case 1: fieldName = 'code'; break;
+        case 2: fieldName = 'exchange_rate'; break;
+    }
+
+    changedData[rowIndex][fieldName] = input.val();
+
+    if (row.attr('data-new-row') === 'true') {
+        ['id', 'code', 'exchange_rate'].forEach((field, index) => {
+            if (!changedData[rowIndex][field]) {
+                changedData[rowIndex][field] = row.find('td').eq(index).find('input').val();
+            }
+        });
+    }
+}
+
+function saveData() {
+    var dataToSend = Object.values(changedData);
+
+    $.ajax({
+        url: '/api/currencies',
+        method: 'POST',
+        data: JSON.stringify({ data: dataToSend }),
+        contentType: 'application/json',
+        headers: {
+            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+        },
+        success: function(result) {
+            console.log(result);
+            alert('Data saved successfully');
+            clearAllErrors();
+            changedData = {}; // Reset changed data after successful save
+        },
+        error: function(jqXHR) {
+            console.error('Error:', jqXHR.responseJSON);
+            if (jqXHR.responseJSON && jqXHR.responseJSON.errors) {
+                handleValidationErrors(jqXHR.responseJSON.errors);
+            }
+        }
+    });
+}
+
+function handleValidationErrors(errors) {
+    clearAllErrors();
+    var table = $('#currencyTable');
+    $.each(errors, function(key, messages) {
+        var matches = key.match(/data\.(\d+)\.(\w+)/);
+        if (matches) {
+            var dataIndex = parseInt(matches[1]);
+            var columnName = matches[2];
+            var rowIndex = Object.keys(changedData).find(key => parseInt(key) === dataIndex);
+            if (rowIndex !== undefined) {
+                var columnIndex;
+                switch (columnName) {
+                    case 'id': columnIndex = 0; break;
+                    case 'code': columnIndex = 1; break;
+                    case 'exchange_rate': columnIndex = 2; break;
+                }
+                var cell = table.find('tr').eq(parseInt(rowIndex) + 1).find('td').eq(columnIndex);
+                var input = cell.find('input');
+                var feedback = cell.find('.error-feedback');
+                input.addClass('is-invalid');
+                feedback.text(messages[0]);
+            }
+        }
+    });
+}
+
+function clearAllErrors() {
+    $('#currencyTable tr').each(function() {
+        $(this).find('td').each(function() {
+            var input = $(this).find('input');
+            var feedback = $(this).find('.error-feedback');
+            input.removeClass('is-invalid');
+            feedback.text('');
+        });
+    });
+}
+
+// Initialize event handlers
+$(document).ready(function() {
+    $('#addRowBtn').click(addRow);
+    $('#saveDataBtn').click(saveData);
+});
+
+
+
+In your Laravel routes file (routes/web.php or routes/api.php), ensure that the route is protected by the csrf middleware:
+Route::post('/api/currencies', [CurrencyController::class, 'store'])->middleware('csrf');
+
+
+
+This approach is safer because:
+
+The CSRF token is not hardcoded in the JavaScript file.
+The token is generated uniquely for each session.
+The token is fetched from the meta tag at runtime, making it harder for attackers to predict or manipulate.
+By using this method:
+
+Your func.js file doesn't contain any sensitive information.
+The CSRF protection is still in place, protecting against cross-site request forgery attacks.
+The JavaScript functionality remains the same, but it's now more secure.
+Remember to include both the meta tag with the CSRF token and the func.js file in your Blade template:
+
+<head>
+    <!-- Other head elements -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script src="{{ asset('assets/js/func.js') }}"></script>
+</head>
+
+
+
