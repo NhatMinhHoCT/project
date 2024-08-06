@@ -643,3 +643,122 @@ This approach will make your website work faster, especially when dealing with l
 
 Try again with different context
 Add context...
+
+    namespace App\Http\Requests;
+
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use App\Models\Currency;
+use Illuminate\Support\Arr;
+
+class CurrencyRequest extends FormRequest
+{
+    public function authorize()
+    {
+        return true;
+    }
+
+    public function rules()
+    {
+        return [
+            'data' => 'required|array',
+            'data.*.id' => 'sometimes|integer',
+            'data.*.code' => [
+                'required',
+                'string',
+                'max:255',
+                function ($attribute, $value, $fail) {
+                    $index = explode('.', $attribute)[1];
+                    $currentId = $this->input("data.{$index}.id");
+
+                    // Check uniqueness against database
+                    $query = Currency::where('code', $value);
+                    if ($currentId) {
+                        $query->where('id', '!=', $currentId);
+                    }
+                    
+                    if ($query->exists()) {
+                        $fail("The code '{$value}' has already been taken in the database.");
+                        return;
+                    }
+
+                    // Check uniqueness within the submitted data
+                    $codeCount = Arr::where($this->input('data'), function ($item) use ($value, $currentId) {
+                        return $item['code'] === $value && $item['id'] !== $currentId;
+                    });
+
+                    if (count($codeCount) > 0) {
+                        $fail("The code '{$value}' appears multiple times in your submission.");
+                    }
+                },
+            ],
+            'data.*.exchange_rate' => 'required|numeric|max:255',
+        ];
+    }
+
+    public function messages()
+    {
+        return [
+            'data.*.code.required' => 'The code field is required.',
+            'data.*.code.string' => 'The code must be a string.',
+            'data.*.code.max' => 'The code may not be greater than 255 characters.',
+            'data.*.exchange_rate.required' => 'The exchange rate field is required.',
+            'data.*.exchange_rate.numeric' => 'The exchange rate must be a number.',
+            'data.*.exchange_rate.max' => 'The exchange rate may not be greater than 255.',
+        ];
+    }
+}
+
+
+
+Here's what this updated code does:
+
+It still checks for uniqueness against the database, ignoring the current record if an ID is provided.
+
+It adds an additional check for uniqueness within the submitted data:
+
+It uses Arr::where() to count how many times the current code appears in the submitted data, excluding the current item.
+If the count is greater than 0, it means the code appears multiple times in the submission, and the validation fails.
+It provides separate error messages for database conflicts and conflicts within the submitted data.
+
+This approach ensures that:
+
+Codes are unique across existing database entries (excluding the current record if it's an update).
+Codes are unique within the set of data being submitted in this request.
+Appropriate error messages are provided for both types of conflicts.
+In your controller, you can now handle the validated data as before, knowing that both database-level and submission-level uniqueness has been ensured:
+
+public function store(CurrencyRequest $request)
+{
+    $validatedData = $request->validated()['data'];
+
+    DB::beginTransaction();
+
+    try {
+        foreach ($validatedData as $item) {
+            Currency::updateOrCreate(
+                ['id' => Arr::get($item, 'id')],
+                [
+                    'code' => $item['code'],
+                    'exchange_rate' => $item['exchange_rate'],
+                ]
+            );
+        }
+
+        DB::commit();
+        return response()->json(['message' => 'Currencies processed successfully']);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json(['message' => 'An error occurred while processing your request'], 500);
+    }
+}
+
+
+
+This implementation handles the uniqueness constraint correctly for multiple inputs in a single request, both against the database and within the submitted data set.
+
+
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
