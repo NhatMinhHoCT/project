@@ -1,0 +1,1438 @@
+To achieve this complex query in Laravel, we can use Eloquent relationships and query builders. Here's a detailed approach to solve this problem:
+
+First, let's define the Eloquent models and their relationships:
+// app/Models/Project.php
+class Project extends Model
+{
+    public function projectStaff()
+    {
+        return $this->hasMany(ProjectStaff::class, 'id_Project');
+    }
+
+    public function leaders()
+    {
+        return $this->projectStaff()->where('IsLeader', 1);
+    }
+}
+
+// app/Models/ProjectStaff.php
+class ProjectStaff extends Model
+{
+    public function project()
+    {
+        return $this->belongsTo(Project::class, 'id_Project');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(Staff::class, 'id_User');
+    }
+}
+
+// app/Models/Staff.php
+class Staff extends Model
+{
+    protected $table = 'Staff';
+    protected $primaryKey = 'id_User';
+
+    public function projectStaff()
+    {
+        return $this->hasMany(ProjectStaff::class, 'id_User');
+    }
+}
+
+
+
+Now, let's create a query to fetch the projects with their leaders:
+// In your controller
+public function index()
+{
+    $projects = Project::select('id_Project', 'description', 'startDate', 'endDate')
+        ->with(['leaders' => function ($query) {
+            $query->select('id_Project_Staff', 'id_Project', 'id_User', 'StartProjectDate', 'EndProjectDate')
+                ->with(['user' => function ($query) {
+                    $query->select('id_User', 'UserName');
+                }])
+                ->orderBy('StartProjectDate')
+                ->orderByDesc('EndProjectDate');
+        }])
+        ->get();
+
+    $projects = $projects->map(function ($project) {
+        $leader = $project->leaders->first(function ($leader) use ($project) {
+            $sameStartDate = $leader->StartProjectDate == $project->leaders->min('StartProjectDate');
+            $sameEndDate = $leader->EndProjectDate == $project->leaders->max('EndProjectDate');
+            return $sameStartDate && $sameEndDate;
+        });
+
+        if (!$leader) {
+            $leader = $project->leaders->first();
+        }
+
+        return [
+            'id_Project' => $project->id_Project,
+            'description' => $project->description,
+            'startDate' => $project->startDate,
+            'endDate' => $project->endDate,
+            'leaderName' => $leader ? $leader->user->UserName : null,
+        ];
+    });
+
+    return view('projects.index', compact('projects'));
+}
+
+
+
+This code does the following:
+
+It selects all projects with their basic information.
+It eagerly loads the leaders (ProjectStaff with IsLeader = 1) for each project, along with the associated user information.
+The leaders are ordered by StartProjectDate (ascending) and EndProjectDate (descending) to prioritize leaders with earlier start dates and later end dates.
+After fetching the data, we map over each project to select the appropriate leader:
+First, we try to find a leader with the same start and end dates as the project.
+If no such leader is found, we take the first leader in the sorted list.
+Finally, we return an array with the project information and the selected leader's name.
+This approach minimizes database queries by using eager loading, and performs the leader selection logic in PHP rather than in the database query.
+
+To use this in your view, you can iterate over the $projects collection:
+
+@foreach($projects as $project)
+    <tr>
+        <td>{{ $project['description'] }}</td>
+        <td>{{ $project['startDate'] }}</td>
+        <td>{{ $project['endDate'] }}</td>
+        <td>{{ $project['leaderName'] ?? 'No leader assigned' }}</td>
+    </tr>
+@endforeach
+
+
+
+This solution should handle all the cases you described, including projects with multiple leaders and the various conditions for selecting the appropriate leader to display.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+Can you improve the code, i wish to have a complete time, this is the way to count. Everty prject have many work, each work contains many work_details,  each work detail need some time to comeplete and this time is stored also. So we have to count all the time to have the complete time for a project. Use the tables i give you up above.
+
+
+Certainly! I'll modify the code to include the complete time calculation for each project based on the work details. We'll need to add more relationships and adjust our query to include this information. Here's the improved version:
+
+First, let's update our Eloquent models with the new relationships:
+// app/Models/Project.php
+class Project extends Model
+{
+    public function projectStaff()
+    {
+        return $this->hasMany(ProjectStaff::class, 'id_Project');
+    }
+
+    public function leaders()
+    {
+        return $this->projectStaff()->where('IsLeader', 1);
+    }
+
+    public function projectWorks()
+    {
+        return $this->hasMany(ProjectWork::class, 'id_Project');
+    }
+}
+
+// app/Models/ProjectWork.php
+class ProjectWork extends Model
+{
+    public function project()
+    {
+        return $this->belongsTo(Project::class, 'id_Project');
+    }
+
+    public function work()
+    {
+        return $this->belongsTo(Work::class, 'id_Job');
+    }
+}
+
+// app/Models/Work.php
+class Work extends Model
+{
+    public function workDetails()
+    {
+        return $this->hasMany(WorkDetail::class, 'id_work');
+    }
+}
+
+// app/Models/WorkDetail.php
+class WorkDetail extends Model
+{
+    public function work()
+    {
+        return $this->belongsTo(Work::class, 'id_work');
+    }
+
+    public function workProgresses()
+    {
+        return $this->hasMany(WorkProgress::class, 'id_work_detail');
+    }
+}
+
+// app/Models/WorkProgress.php
+class WorkProgress extends Model
+{
+    public function workDetail()
+    {
+        return $this->belongsTo(WorkDetail::class, 'id_work_detail');
+    }
+}
+
+
+
+Now, let's update our controller method to include the complete time calculation:
+public function index()
+{
+    $projects = Project::select('id_Project', 'description', 'startDate', 'endDate')
+        ->with(['leaders' => function ($query) {
+            $query->select('id_Project_Staff', 'id_Project', 'id_User', 'StartProjectDate', 'EndProjectDate')
+                ->with(['user' => function ($query) {
+                    $query->select('id_User', 'UserName');
+                }])
+                ->orderBy('StartProjectDate')
+                ->orderByDesc('EndProjectDate');
+        }])
+        ->withCount(['projectWorks as complete_time' => function ($query) {
+            $query->selectRaw('SUM(work_progress.execution_time)')
+                ->join('Work', 'Project_Work.id_Job', '=', 'Work.id_work')
+                ->join('Work_detail', 'Work.id_work', '=', 'Work_detail.id_work')
+                ->join('Work_progress', 'Work_detail.id_work_detail', '=', 'Work_progress.id_work_detail');
+        }])
+        ->get();
+
+    $projects = $projects->map(function ($project) {
+        $leader = $project->leaders->first(function ($leader) use ($project) {
+            $sameStartDate = $leader->StartProjectDate == $project->leaders->min('StartProjectDate');
+            $sameEndDate = $leader->EndProjectDate == $project->leaders->max('EndProjectDate');
+            return $sameStartDate && $sameEndDate;
+        });
+
+        if (!$leader) {
+            $leader = $project->leaders->first();
+        }
+
+        return [
+            'id_Project' => $project->id_Project,
+            'description' => $project->description,
+            'startDate' => $project->startDate,
+            'endDate' => $project->endDate,
+            'leaderName' => $leader ? $leader->user->UserName : null,
+            'completeTime' => $project->complete_time,
+        ];
+    });
+
+    return view('projects.index', compact('projects'));
+}
+
+
+
+This updated code does the following:
+
+It still selects all projects with their basic information and leaders.
+It adds a new withCount clause that calculates the complete time for each project. This is done by:
+Joining the Project_Work, Work, Work_detail, and Work_progress tables.
+Summing up the execution_time from the Work_progress table for all work details associated with the project.
+The result is aliased as complete_time and will be available on each project model.
+In the mapping function, we now include this completeTime in the returned array for each project.
+To use this in your view, you can update your table to include the complete time:
+
+@foreach($projects as $project)
+    <tr>
+        <td>{{ $project['description'] }}</td>
+        <td>{{ $project['startDate'] }}</td>
+        <td>{{ $project['endDate'] }}</td>
+        <td>{{ $project['leaderName'] ?? 'No leader assigned' }}</td>
+        <td>{{ $project['completeTime'] }} hours</td>
+    </tr>
+@endforeach
+
+
+
+This solution now includes the complete time calculation for each project, summing up the execution time from all associated work details. The time is calculated efficiently using database joins and aggregation, minimizing the number of queries needed.
+
+Remember to adjust the column names and relationships if they differ from what I've assumed here. Also, make sure to create the necessary Eloquent models for ProjectWork, Work, WorkDetail, and WorkProgress if you haven't already.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+Can you explain every code and all function is used
+
+
+Certainly! I'll break down the code and explain each part in detail.
+
+Eloquent Models:
+class Project extends Model
+{
+    public function projectStaff()
+    {
+        return $this->hasMany(ProjectStaff::class, 'id_Project');
+    }
+
+    public function leaders()
+    {
+        return $this->projectStaff()->where('IsLeader', 1);
+    }
+
+    public function projectWorks()
+    {
+        return $this->hasMany(ProjectWork::class, 'id_Project');
+    }
+}
+
+
+
+projectStaff(): Defines a one-to-many relationship between Project and ProjectStaff.
+leaders(): Defines a relationship that filters ProjectStaff to only include leaders.
+projectWorks(): Defines a one-to-many relationship between Project and ProjectWork.
+Similar relationship methods are defined for other models (ProjectWork, Work, WorkDetail, WorkProgress).
+
+Controller Method:
+public function index()
+{
+    $projects = Project::select('id_Project', 'description', 'startDate', 'endDate')
+        ->with(['leaders' => function ($query) {
+            $query->select('id_Project_Staff', 'id_Project', 'id_User', 'StartProjectDate', 'EndProjectDate')
+                ->with(['user' => function ($query) {
+                    $query->select('id_User', 'UserName');
+                }])
+                ->orderBy('StartProjectDate')
+                ->orderByDesc('EndProjectDate');
+        }])
+        ->withCount(['projectWorks as complete_time' => function ($query) {
+            $query->selectRaw('SUM(work_progress.execution_time)')
+                ->join('Work', 'Project_Work.id_Job', '=', 'Work.id_work')
+                ->join('Work_detail', 'Work.id_work', '=', 'Work_detail.id_work')
+                ->join('Work_progress', 'Work_detail.id_work_detail', '=', 'Work_progress.id_work_detail');
+        }])
+        ->get();
+
+    // ... rest of the method
+}
+
+
+
+Explanation:
+
+Project::select(...): Starts the query, selecting specific columns from the Project table.
+->with(['leaders' => function ($query) { ... }]):
+Uses eager loading to load the leaders relationship.
+The nested query further selects specific columns and loads the associated user.
+orderBy and orderByDesc sort the leaders by their start and end dates.
+->withCount(['projectWorks as complete_time' => function ($query) { ... }]):
+Uses withCount to perform a related count query, but we override it to sum the execution times instead.
+The subquery joins multiple tables to calculate the total execution time for all work details associated with each project.
+->get(): Executes the query and retrieves the results.
+Data Processing:
+$projects = $projects->map(function ($project) {
+    $leader = $project->leaders->first(function ($leader) use ($project) {
+        $sameStartDate = $leader->StartProjectDate == $project->leaders->min('StartProjectDate');
+        $sameEndDate = $leader->EndProjectDate == $project->leaders->max('EndProjectDate');
+        return $sameStartDate && $sameEndDate;
+    });
+
+    if (!$leader) {
+        $leader = $project->leaders->first();
+    }
+
+    return [
+        'id_Project' => $project->id_Project,
+        'description' => $project->description,
+        'startDate' => $project->startDate,
+        'endDate' => $project->endDate,
+        'leaderName' => $leader ? $leader->user->UserName : null,
+        'completeTime' => $project->complete_time,
+    ];
+});
+
+
+
+Explanation:
+
+$projects->map(...): Transforms each project in the collection.
+The nested first() function tries to find a leader with the earliest start date and latest end date.
+If no such leader is found, it defaults to the first leader in the list.
+The function returns an array with the processed project data, including the selected leader's name and the calculated complete time.
+View Rendering:
+return view('projects.index', compact('projects'));
+
+
+
+This line renders the 'projects.index' view and passes the $projects variable to it.
+
+Blade Template:
+@foreach($projects as $project)
+    <tr>
+        <td>{{ $project['description'] }}</td>
+        <td>{{ $project['startDate'] }}</td>
+        <td>{{ $project['endDate'] }}</td>
+        <td>{{ $project['leaderName'] ?? 'No leader assigned' }}</td>
+        <td>{{ $project['completeTime'] }} hours</td>
+    </tr>
+@endforeach
+
+
+
+This loops through each project and displays its information in a table row.
+
+Key Laravel/Eloquent Features Used:
+
+Eloquent ORM for defining model relationships
+Eager loading with with() to prevent N+1 query problems
+Query scopes and constraints within relationship definitions
+withCount() for performing aggregate queries on relationships
+Query builder methods like join(), selectRaw(), and orderBy()
+Collection methods like map() and first() for data transformation
+Blade templating for view rendering
+This code efficiently fetches project data, calculates complex metrics, and prepares it for display, all while minimizing database queries.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+Can you improve code, i have a custom pagination file that used for all the project, it was written by another member of my dev team. So can you add paginate into your code, limit 10 rows. The ajax was used to move to the second page, not a href, the url stored in the value attribute. 
+
+
+Certainly! I'll modify the code to include pagination with a limit of 10 rows per page, and adjust it to work with a custom pagination file and AJAX. Here's the improved version:
+
+First, let's update the controller method:
+public function index(Request $request)
+{
+    $page = $request->input('page', 1);
+    $perPage = 10;
+
+    $projectsQuery = Project::select('id_Project', 'description', 'startDate', 'endDate')
+        ->with(['leaders' => function ($query) {
+            $query->select('id_Project_Staff', 'id_Project', 'id_User', 'StartProjectDate', 'EndProjectDate')
+                ->with(['user' => function ($query) {
+                    $query->select('id_User', 'UserName');
+                }])
+                ->orderBy('StartProjectDate')
+                ->orderByDesc('EndProjectDate');
+        }])
+        ->withCount(['projectWorks as complete_time' => function ($query) {
+            $query->selectRaw('SUM(work_progress.execution_time)')
+                ->join('Work', 'Project_Work.id_Job', '=', 'Work.id_work')
+                ->join('Work_detail', 'Work.id_work', '=', 'Work_detail.id_work')
+                ->join('Work_progress', 'Work_detail.id_work_detail', '=', 'Work_progress.id_work_detail');
+        }]);
+
+    $total = $projectsQuery->count();
+    $projects = $projectsQuery->offset(($page - 1) * $perPage)
+                              ->limit($perPage)
+                              ->get();
+
+    $projects = $projects->map(function ($project) {
+        $leader = $project->leaders->first(function ($leader) use ($project) {
+            $sameStartDate = $leader->StartProjectDate == $project->leaders->min('StartProjectDate');
+            $sameEndDate = $leader->EndProjectDate == $project->leaders->max('EndProjectDate');
+            return $sameStartDate && $sameEndDate;
+        });
+
+        if (!$leader) {
+            $leader = $project->leaders->first();
+        }
+
+        return [
+            'id_Project' => $project->id_Project,
+            'description' => $project->description,
+            'startDate' => $project->startDate,
+            'endDate' => $project->endDate,
+            'leaderName' => $leader ? $leader->user->UserName : null,
+            'completeTime' => $project->complete_time,
+        ];
+    });
+
+    $pagination = [
+        'total' => $total,
+        'per_page' => $perPage,
+        'current_page' => $page,
+        'last_page' => ceil($total / $perPage),
+    ];
+
+    if ($request->ajax()) {
+        return response()->json([
+            'projects' => $projects,
+            'pagination' => $pagination,
+        ]);
+    }
+
+    return view('projects.index', compact('projects', 'pagination'));
+}
+
+
+
+Now, let's update the Blade template to include the custom pagination:
+<table>
+    <thead>
+        <tr>
+            <th>Description</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Leader Name</th>
+            <th>Complete Time</th>
+        </tr>
+    </thead>
+    <tbody id="projects-table-body">
+        @foreach($projects as $project)
+            <tr>
+                <td>{{ $project['description'] }}</td>
+                <td>{{ $project['startDate'] }}</td>
+                <td>{{ $project['endDate'] }}</td>
+                <td>{{ $project['leaderName'] ?? 'No leader assigned' }}</td>
+                <td>{{ $project['completeTime'] }} hours</td>
+            </tr>
+        @endforeach
+    </tbody>
+</table>
+
+<div id="pagination-container">
+    @include('custom.pagination', ['pagination' => $pagination])
+</div>
+
+<script>
+$(document).ready(function() {
+    $(document).on('click', '.pagination-link', function(e) {
+        e.preventDefault();
+        var page = $(this).attr('value');
+        loadProjects(page);
+    });
+
+    function loadProjects(page) {
+        $.ajax({
+            url: '{{ route("projects.index") }}',
+            method: 'GET',
+            data: { page: page },
+            success: function(response) {
+                $('#projects-table-body').html('');
+                $.each(response.projects, function(index, project) {
+                    var row = '<tr>' +
+                        '<td>' + project.description + '</td>' +
+                        '<td>' + project.startDate + '</td>' +
+                        '<td>' + project.endDate + '</td>' +
+                        '<td>' + (project.leaderName || 'No leader assigned') + '</td>' +
+                        '<td>' + project.completeTime + ' hours</td>' +
+                        '</tr>';
+                    $('#projects-table-body').append(row);
+                });
+                $('#pagination-container').html(response.pagination);
+            },
+            error: function(xhr) {
+                console.log('Error:', xhr);
+            }
+        });
+    }
+});
+</script>
+
+
+
+Create a custom pagination file (e.g., resources/views/custom/pagination.blade.php):
+@if ($pagination['last_page'] > 1)
+    <div class="pagination">
+        @if ($pagination['current_page'] > 1)
+            <a href="#" class="pagination-link" value="{{ $pagination['current_page'] - 1 }}">Previous</a>
+        @endif
+
+        @for ($i = 1; $i <= $pagination['last_page']; $i++)
+            @if ($i == $pagination['current_page'])
+                <span class="current-page">{{ $i }}</span>
+            @else
+                <a href="#" class="pagination-link" value="{{ $i }}">{{ $i }}</a>
+            @endif
+        @endfor
+
+        @if ($pagination['current_page'] < $pagination['last_page'])
+            <a href="#" class="pagination-link" value="{{ $pagination['current_page'] + 1 }}">Next</a>
+        @endif
+    </div>
+@endif
+
+
+
+This improved version includes the following changes:
+
+The controller now handles both the initial page load and AJAX requests for pagination.
+Pagination is implemented manually using offset() and limit() instead of Laravel's built-in pagination, to allow for more customization.
+The Blade template now includes a table with a separate tbody that can be updated via AJAX.
+A custom pagination component is included, which uses the value attribute to store the page number.
+JavaScript is added to handle clicking on pagination links and loading new data via AJAX.
+The custom pagination file creates links with the page number stored in the value attribute, as requested.
+This setup allows for custom pagination with AJAX loading of new pages. The pagination links use the value attribute to store the page number, and clicking on them will trigger an AJAX request to load the new page of data.
+
+Remember to adjust the route name in the JavaScript if it's different from projects.index, and make sure to include jQuery or your preferred AJAX library in your layout file.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+i use paginate(10) of laravel, add it to your code
+
+
+Certainly! I'll modify the code to use Laravel's built-in paginate(10) method instead of manual pagination. This will simplify our controller code and allow us to use Laravel's pagination features. Here's the updated version:
+
+Update the controller method:
+public function index(Request $request)
+{
+    $projectsQuery = Project::select('id_Project', 'description', 'startDate', 'endDate')
+        ->with(['leaders' => function ($query) {
+            $query->select('id_Project_Staff', 'id_Project', 'id_User', 'StartProjectDate', 'EndProjectDate')
+                ->with(['user' => function ($query) {
+                    $query->select('id_User', 'UserName');
+                }])
+                ->orderBy('StartProjectDate')
+                ->orderByDesc('EndProjectDate');
+        }])
+        ->withCount(['projectWorks as complete_time' => function ($query) {
+            $query->selectRaw('SUM(work_progress.execution_time)')
+                ->join('Work', 'Project_Work.id_Job', '=', 'Work.id_work')
+                ->join('Work_detail', 'Work.id_work', '=', 'Work_detail.id_work')
+                ->join('Work_progress', 'Work_detail.id_work_detail', '=', 'Work_progress.id_work_detail');
+        }]);
+
+    $projects = $projectsQuery->paginate(10);
+
+    $projects->getCollection()->transform(function ($project) {
+        $leader = $project->leaders->first(function ($leader) use ($project) {
+            $sameStartDate = $leader->StartProjectDate == $project->leaders->min('StartProjectDate');
+            $sameEndDate = $leader->EndProjectDate == $project->leaders->max('EndProjectDate');
+            return $sameStartDate && $sameEndDate;
+        });
+
+        if (!$leader) {
+            $leader = $project->leaders->first();
+        }
+
+        return [
+            'id_Project' => $project->id_Project,
+            'description' => $project->description,
+            'startDate' => $project->startDate,
+            'endDate' => $project->endDate,
+            'leaderName' => $leader ? $leader->user->UserName : null,
+            'completeTime' => $project->complete_time,
+        ];
+    });
+
+    if ($request->ajax()) {
+        return response()->json([
+            'projects' => $projects->items(),
+            'pagination' => [
+                'total' => $projects->total(),
+                'per_page' => $projects->perPage(),
+                'current_page' => $projects->currentPage(),
+                'last_page' => $projects->lastPage(),
+            ],
+        ]);
+    }
+
+    return view('projects.index', compact('projects'));
+}
+
+
+
+Update the Blade template:
+<table>
+    <thead>
+        <tr>
+            <th>Description</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Leader Name</th>
+            <th>Complete Time</th>
+        </tr>
+    </thead>
+    <tbody id="projects-table-body">
+        @foreach($projects as $project)
+            <tr>
+                <td>{{ $project['description'] }}</td>
+                <td>{{ $project['startDate'] }}</td>
+                <td>{{ $project['endDate'] }}</td>
+                <td>{{ $project['leaderName'] ?? 'No leader assigned' }}</td>
+                <td>{{ $project['completeTime'] }} hours</td>
+            </tr>
+        @endforeach
+    </tbody>
+</table>
+
+<div id="pagination-container">
+    {{ $projects->links('custom.pagination') }}
+</div>
+
+<script>
+$(document).ready(function() {
+    $(document).on('click', '.pagination-link', function(e) {
+        e.preventDefault();
+        var page = $(this).attr('value');
+        loadProjects(page);
+    });
+
+    function loadProjects(page) {
+        $.ajax({
+            url: '{{ route("projects.index") }}',
+            method: 'GET',
+            data: { page: page },
+            success: function(response) {
+                $('#projects-table-body').html('');
+                $.each(response.projects, function(index, project) {
+                    var row = '<tr>' +
+                        '<td>' + project.description + '</td>' +
+                        '<td>' + project.startDate + '</td>' +
+                        '<td>' + project.endDate + '</td>' +
+                        '<td>' + (project.leaderName || 'No leader assigned') + '</td>' +
+                        '<td>' + project.completeTime + ' hours</td>' +
+                        '</tr>';
+                    $('#projects-table-body').append(row);
+                });
+                $('#pagination-container').html(response.pagination);
+            },
+            error: function(xhr) {
+                console.log('Error:', xhr);
+            }
+        });
+    }
+});
+</script>
+
+
+
+Update the custom pagination file (e.g., resources/views/custom/pagination.blade.php):
+@if ($paginator->hasPages())
+    <div class="pagination">
+        @if ($paginator->onFirstPage())
+            <span class="disabled">Previous</span>
+        @else
+            <a href="#" class="pagination-link" value="{{ $paginator->currentPage() - 1 }}">Previous</a>
+        @endif
+
+        @foreach ($elements as $element)
+            @if (is_string($element))
+                <span class="disabled">{{ $element }}</span>
+            @endif
+
+            @if (is_array($element))
+                @foreach ($element as $page => $url)
+                    @if ($page == $paginator->currentPage())
+                        <span class="current-page">{{ $page }}</span>
+                    @else
+                        <a href="#" class="pagination-link" value="{{ $page }}">{{ $page }}</a>
+                    @endif
+                @endforeach
+            @endif
+        @endforeach
+
+        @if ($paginator->hasMorePages())
+            <a href="#" class="pagination-link" value="{{ $paginator->currentPage() + 1 }}">Next</a>
+        @else
+            <span class="disabled">Next</span>
+        @endif
+    </div>
+@endif
+
+
+
+This updated version uses Laravel's paginate(10) method, which simplifies our pagination logic. Here are the key changes:
+
+In the controller, we use paginate(10) instead of manual offset and limit.
+We transform the paginated collection to format the project data as before.
+For AJAX requests, we return the paginated items and pagination information.
+In the Blade template, we use $projects->links('custom.pagination') to render the pagination links.
+The custom pagination file now extends Laravel's default pagination view, but uses the value attribute for page numbers as requested.
+This approach combines the simplicity of Laravel's built-in pagination with your custom AJAX-based page loading. The pagination links will have the page number in the value attribute, allowing your existing AJAX code to work as expected.
+
+Remember to adjust the route name in the JavaScript if it's different from projects.index, and ensure that jQuery (or your preferred AJAX library) is included in your layout file.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+Can you add more to your code, i want to search with the project name, startDate, endDate. The result will be send back as ajax response. 
+
+
+Certainly! I'll add search functionality for project name, startDate, and endDate. We'll modify the controller to handle these search parameters and update the view to include a search form. Here's the improved version:
+
+Update the controller method:
+public function index(Request $request)
+{
+    $projectsQuery = Project::select('id_Project', 'description', 'startDate', 'endDate')
+        ->with(['leaders' => function ($query) {
+            $query->select('id_Project_Staff', 'id_Project', 'id_User', 'StartProjectDate', 'EndProjectDate')
+                ->with(['user' => function ($query) {
+                    $query->select('id_User', 'UserName');
+                }])
+                ->orderBy('StartProjectDate')
+                ->orderByDesc('EndProjectDate');
+        }])
+        ->withCount(['projectWorks as complete_time' => function ($query) {
+            $query->selectRaw('SUM(work_progress.execution_time)')
+                ->join('Work', 'Project_Work.id_Job', '=', 'Work.id_work')
+                ->join('Work_detail', 'Work.id_work', '=', 'Work_detail.id_work')
+                ->join('Work_progress', 'Work_detail.id_work_detail', '=', 'Work_progress.id_work_detail');
+        }]);
+
+    // Apply search filters
+    if ($request->filled('project_name')) {
+        $projectsQuery->where('description', 'like', '%' . $request->input('project_name') . '%');
+    }
+    if ($request->filled('start_date')) {
+        $projectsQuery->where('startDate', '>=', $request->input('start_date'));
+    }
+    if ($request->filled('end_date')) {
+        $projectsQuery->where('endDate', '<=', $request->input('end_date'));
+    }
+
+    $projects = $projectsQuery->paginate(10);
+
+    $projects->getCollection()->transform(function ($project) {
+        $leader = $project->leaders->first(function ($leader) use ($project) {
+            $sameStartDate = $leader->StartProjectDate == $project->leaders->min('StartProjectDate');
+            $sameEndDate = $leader->EndProjectDate == $project->leaders->max('EndProjectDate');
+            return $sameStartDate && $sameEndDate;
+        });
+
+        if (!$leader) {
+            $leader = $project->leaders->first();
+        }
+
+        return [
+            'id_Project' => $project->id_Project,
+            'description' => $project->description,
+            'startDate' => $project->startDate,
+            'endDate' => $project->endDate,
+            'leaderName' => $leader ? $leader->user->UserName : null,
+            'completeTime' => $project->complete_time,
+        ];
+    });
+
+    if ($request->ajax()) {
+        return response()->json([
+            'projects' => $projects->items(),
+            'pagination' => [
+                'total' => $projects->total(),
+                'per_page' => $projects->perPage(),
+                'current_page' => $projects->currentPage(),
+                'last_page' => $projects->lastPage(),
+            ],
+        ]);
+    }
+
+    return view('projects.index', compact('projects'));
+}
+
+
+
+Update the Blade template to include a search form:
+<div id="search-form">
+    <form id="project-search-form">
+        <input type="text" name="project_name" placeholder="Project Name">
+        <input type="date" name="start_date" placeholder="Start Date">
+        <input type="date" name="end_date" placeholder="End Date">
+        <button type="submit">Search</button>
+    </form>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Description</th>
+            <th>Start Date</th>
+            <th>End Date</th>
+            <th>Leader Name</th>
+            <th>Complete Time</th>
+        </tr>
+    </thead>
+    <tbody id="projects-table-body">
+        @foreach($projects as $project)
+            <tr>
+                <td>{{ $project['description'] }}</td>
+                <td>{{ $project['startDate'] }}</td>
+                <td>{{ $project['endDate'] }}</td>
+                <td>{{ $project['leaderName'] ?? 'No leader assigned' }}</td>
+                <td>{{ $project['completeTime'] }} hours</td>
+            </tr>
+        @endforeach
+    </tbody>
+</table>
+
+<div id="pagination-container">
+    {{ $projects->links('custom.pagination') }}
+</div>
+
+<script>
+$(document).ready(function() {
+    function loadProjects(page = 1) {
+        var formData = $('#project-search-form').serialize() + '&page=' + page;
+        
+        $.ajax({
+            url: '{{ route("projects.index") }}',
+            method: 'GET',
+            data: formData,
+            success: function(response) {
+                $('#projects-table-body').html('');
+                $.each(response.projects, function(index, project) {
+                    var row = '<tr>' +
+                        '<td>' + project.description + '</td>' +
+                        '<td>' + project.startDate + '</td>' +
+                        '<td>' + project.endDate + '</td>' +
+                        '<td>' + (project.leaderName || 'No leader assigned') + '</td>' +
+                        '<td>' + project.completeTime + ' hours</td>' +
+                        '</tr>';
+                    $('#projects-table-body').append(row);
+                });
+                $('#pagination-container').html(response.pagination);
+            },
+            error: function(xhr) {
+                console.log('Error:', xhr);
+            }
+        });
+    }
+
+    $(document).on('click', '.pagination-link', function(e) {
+        e.preventDefault();
+        var page = $(this).attr('value');
+        loadProjects(page);
+    });
+
+    $('#project-search-form').on('submit', function(e) {
+        e.preventDefault();
+        loadProjects();
+    });
+
+    // Initial load
+    loadProjects();
+});
+</script>
+
+
+
+The custom pagination file (resources/views/custom/pagination.blade.php) remains the same as in the previous response.
+This updated version includes the following changes:
+
+The controller now checks for search parameters (project_name, start_date, and end_date) and applies them to the query if they're present.
+
+The Blade template now includes a search form with inputs for project name, start date, and end date.
+
+The JavaScript has been updated to:
+
+Serialize the search form data and include it in the AJAX request.
+Handle form submission to trigger a search.
+Load projects on initial page load.
+The loadProjects function now handles both pagination and search, sending all necessary data to the server.
+
+This implementation allows users to search for projects by name, start date, and end date. The search results are loaded via AJAX, and the pagination is updated accordingly. The existing pagination functionality remains intact, working with the search results as well.
+
+Remember to adjust the route name in the JavaScript if it's different from projects.index, and ensure that jQuery (or your preferred AJAX library) is included in your layout file.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+Why sometime when i used left join (i guess it may be the reason), i face this error: Syntax error or access violation: 1140 InAggretaed query wwithout group by....
+And one more question, if i have a page with 3 tab, first tab is a table like this, the second contain many card, each card is a project. The third tab will be a frappe gantt chart, and it display project, startDate, endDate, description. When the user click on it, it will display the content of project(name, time, description), user can drag the start or the end of this to adjust startDate and endDate and it will update to database, no button to submit. 
+
+
+Let's address your questions one by one:
+
+Regarding the error "Syntax error or access violation: 1140 In Aggregated query without GROUP BY":
+This error typically occurs when you're using aggregate functions (like SUM, COUNT, AVG, etc.) in a query that also selects non-aggregated columns, without specifying a GROUP BY clause. MySQL's default SQL mode includes ONLY_FULL_GROUP_BY, which requires all non-aggregated columns in the SELECT list to be included in the GROUP BY clause.
+
+To resolve this, you have a few options:
+
+a) Add a GROUP BY clause that includes all non-aggregated columns. b) Use any_value() function for columns you don't want to group by. c) Disable ONLY_FULL_GROUP_BY mode (not recommended for production).
+
+For example, if your query looks like this:
+
+SELECT project.id, project.name, SUM(work.hours) as total_hours
+FROM project
+LEFT JOIN work ON project.id = work.project_id
+
+
+
+You could fix it like this:
+
+SELECT project.id, project.name, SUM(work.hours) as total_hours
+FROM project
+LEFT JOIN work ON project.id = work.project_id
+GROUP BY project.id, project.name
+
+
+
+Regarding the page with 3 tabs:
+For this complex UI, you'll need a combination of server-side and client-side programming. Here's a high-level approach:
+
+a) Server-side (Laravel):
+
+Create routes and controller methods for each tab's data.
+Implement an API endpoint for updating project dates.
+b) Client-side (JavaScript/jQuery):
+
+Use AJAX to load data for each tab when clicked.
+Implement Frappe Gantt for the third tab.
+Here's a basic structure:
+
+// routes/web.php
+Route::get('/projects', 'ProjectController@index');
+Route::get('/projects/cards', 'ProjectController@cards');
+Route::get('/projects/gantt', 'ProjectController@gantt');
+Route::put('/projects/{id}/dates', 'ProjectController@updateDates');
+
+// ProjectController.php
+class ProjectController extends Controller
+{
+    public function index() { /* First tab logic */ }
+    public function cards() { /* Second tab logic */ }
+    public function gantt() { /* Third tab logic */ }
+    
+    public function updateDates(Request $request, $id)
+    {
+        $project = Project::findOrFail($id);
+        $project->update([
+            'startDate' => $request->input('start_date'),
+            'endDate' => $request->input('end_date'),
+        ]);
+        return response()->json(['success' => true]);
+    }
+}
+
+
+
+<!-- View file -->
+<div id="tabs">
+    <ul>
+        <li><a href="#tab1">Table</a></li>
+        <li><a href="#tab2">Cards</a></li>
+        <li><a href="#tab3">Gantt</a></li>
+    </ul>
+    <div id="tab1"></div>
+    <div id="tab2"></div>
+    <div id="tab3"></div>
+</div>
+
+<script>
+$(document).ready(function() {
+    $("#tabs").tabs({
+        activate: function(event, ui) {
+            if (ui.newPanel.attr('id') === 'tab1') {
+                loadTable();
+            } else if (ui.newPanel.attr('id') === 'tab2') {
+                loadCards();
+            } else if (ui.newPanel.attr('id') === 'tab3') {
+                loadGantt();
+            }
+        }
+    });
+
+    function loadTable() {
+        $.get('/projects', function(data) {
+            $('#tab1').html(data);
+        });
+    }
+
+    function loadCards() {
+        $.get('/projects/cards', function(data) {
+            $('#tab2').html(data);
+        });
+    }
+
+    function loadGantt() {
+        $.get('/projects/gantt', function(data) {
+            $('#tab3').html(data);
+            initGantt(data);
+        });
+    }
+
+    function initGantt(data) {
+        var gantt = new Gantt("#gantt-chart", data);
+        gantt.change(function(task) {
+            $.ajax({
+                url: '/projects/' + task.id + '/dates',
+                method: 'PUT',
+                data: {
+                    start_date: task.start,
+                    end_date: task.end
+                },
+                success: function(response) {
+                    console.log('Dates updated successfully');
+                }
+            });
+        });
+    }
+
+    // Load the first tab on page load
+    loadTable();
+});
+</script>
+
+
+
+This structure allows you to:
+
+Load different content for each tab via AJAX.
+Initialize the Gantt chart when the third tab is activated.
+Update project dates in real-time when tasks are dragged in the Gantt chart.
+Remember to include necessary libraries (jQuery UI for tabs, Frappe Gantt for the chart) and adjust the routes and controller methods as needed for your specific application structure.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+Can you give me different sample for database query by eloquent, which used join, and it link to atleast 4 tables. It should be real life project (not what i ask above). I want to know how people query database, their good practice and trick (if they have).
+
+
+Certainly! I'll provide you with a real-life example of a complex Eloquent query that joins multiple tables. Let's consider an e-commerce system where we want to fetch detailed order information including customer details, product information, and shipping status.
+
+Here's a sample query that joins five tables:
+
+use App\Models\Order;
+use Illuminate\Support\Facades\DB;
+
+class OrderController extends Controller
+{
+    public function getDetailedOrders()
+    {
+        $orders = Order::query()
+            ->select([
+                'orders.id as order_id',
+                'orders.order_number',
+                'orders.total_amount',
+                'orders.created_at as order_date',
+                'customers.id as customer_id',
+                'customers.name as customer_name',
+                'customers.email as customer_email',
+                'order_items.quantity',
+                'products.id as product_id',
+                'products.name as product_name',
+                'products.price as product_price',
+                'shipments.tracking_number',
+                'shipments.status as shipment_status',
+                DB::raw('(order_items.quantity * products.price) as item_total')
+            ])
+            ->join('customers', 'orders.customer_id', '=', 'customers.id')
+            ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+            ->join('products', 'order_items.product_id', '=', 'products.id')
+            ->leftJoin('shipments', 'orders.id', '=', 'shipments.order_id')
+            ->where('orders.status', 'completed')
+            ->where('orders.created_at', '>=', now()->subDays(30))
+            ->orderBy('orders.created_at', 'desc')
+            ->groupBy('orders.id', 'order_items.id', 'products.id', 'shipments.id')
+            ->having('item_total', '>', 100)
+            ->with(['customer.addresses', 'payments'])
+            ->paginate(20);
+
+        return view('orders.detailed', compact('orders'));
+    }
+}
+
+
+
+This query demonstrates several good practices and techniques:
+
+Selective Columns: Instead of using select('*'), we're explicitly selecting only the columns we need. This improves query performance and reduces data transfer.
+
+Table Aliases: We're using table names as aliases (e.g., orders.id) to avoid ambiguity when column names are similar across tables.
+
+Joins: We're using different types of joins (join for inner join, leftJoin for left outer join) based on the relationship between tables.
+
+Computed Columns: We're using DB::raw() to compute the total for each order item.
+
+Filtering: We're using where clauses to filter orders (only completed orders from the last 30 days).
+
+Sorting: We're using orderBy to sort the results.
+
+Grouping: We're using groupBy to group the results. This is necessary when using aggregate functions.
+
+Having Clause: We're using having to filter based on the computed item_total.
+
+Eager Loading: We're using with() to eager load related models (customer addresses and payments) to avoid N+1 query problems.
+
+Pagination: We're using paginate() to limit the number of results per page.
+
+Some additional tips and tricks:
+
+Query Optimization: Use explain() or toSql() methods to analyze and optimize your queries.
+
+Chunking: For large datasets, use chunk() method to process results in smaller batches.
+
+Subqueries: Use addSelect() and subqueries for more complex data retrieval.
+
+Query Scopes: Define query scopes in your models for commonly used query constraints.
+
+Raw Expressions: Use whereRaw() for complex WHERE clauses that can't be expressed using the query builder.
+
+Indexing: Ensure that columns used in JOIN, WHERE, and ORDER BY clauses are properly indexed in the database.
+
+Here's an example of using a local scope and a subquery:
+
+// In the Order model
+public function scopeRecentlyCompleted($query)
+{
+    return $query->where('status', 'completed')
+                 ->where('created_at', '>=', now()->subDays(30));
+}
+
+// In the controller
+$orders = Order::recentlyCompleted()
+    ->addSelect(['latest_payment' => Payment::select('amount')
+        ->whereColumn('order_id', 'orders.id')
+        ->latest()
+        ->take(1)
+    ])
+    ->paginate(20);
+
+
+
+These practices help in writing efficient, readable, and maintainable database queries using Eloquent. Remember to always monitor your query performance and adjust as needed based on your specific use case and data volume.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+More example please, like 10 more
+
+
+Certainly! I'll provide you with 10 more examples of complex Eloquent queries that demonstrate various techniques and real-world scenarios. Each example will include a brief explanation of the scenario and the techniques used.
+
+Blog Post Analytics:
+$popularPosts = Post::select('posts.*')
+    ->withCount(['comments', 'likes'])
+    ->with(['author', 'categories'])
+    ->leftJoin('post_views', 'posts.id', '=', 'post_views.post_id')
+    ->groupBy('posts.id')
+    ->orderByRaw('COUNT(post_views.id) DESC')
+    ->having('comments_count', '>', 10)
+    ->take(10)
+    ->get();
+
+
+
+This query fetches the top 10 most viewed posts with more than 10 comments, including the comment count, like count, author details, and categories.
+
+Product Inventory Management:
+$lowStockProducts = Product::select('products.*', 'suppliers.name as supplier_name')
+    ->join('suppliers', 'products.supplier_id', '=', 'suppliers.id')
+    ->whereColumn('products.stock_quantity', '<', 'products.reorder_level')
+    ->withCount(['orderItems as times_ordered' => function ($query) {
+        $query->where('created_at', '>', now()->subDays(30));
+    }])
+    ->orderBy('times_ordered', 'desc')
+    ->paginate(20);
+
+
+
+This query retrieves products with low stock, including supplier information and the number of times each product was ordered in the last 30 days.
+
+User Activity Report:
+$userActivity = User::select('users.*')
+    ->withCount(['posts', 'comments'])
+    ->addSelect(['last_login' => UserLogin::select('created_at')
+        ->whereColumn('user_id', 'users.id')
+        ->latest()
+        ->take(1)
+    ])
+    ->withSum(['transactions as total_spent' => function ($query) {
+        $query->where('status', 'completed');
+    }], 'amount')
+    ->having('posts_count', '>', 0)
+    ->orHaving('comments_count', '>', 0)
+    ->orderBy('last_login', 'desc')
+    ->paginate(15);
+
+
+
+This query generates a user activity report, including post and comment counts, last login time, and total amount spent on completed transactions.
+
+Complex Event Search:
+$events = Event::select('events.*', 'venues.name as venue_name', 'cities.name as city_name')
+    ->join('venues', 'events.venue_id', '=', 'venues.id')
+    ->join('cities', 'venues.city_id', '=', 'cities.id')
+    ->where(function ($query) use ($request) {
+        $query->where('events.name', 'like', "%{$request->search}%")
+            ->orWhere('events.description', 'like', "%{$request->search}%")
+            ->orWhere('venues.name', 'like', "%{$request->search}%")
+            ->orWhere('cities.name', 'like', "%{$request->search}%");
+    })
+    ->when($request->date, function ($query, $date) {
+        return $query->whereDate('events.start_date', '=', $date);
+    })
+    ->when($request->category_id, function ($query, $categoryId) {
+        return $query->whereHas('categories', function ($q) use ($categoryId) {
+            $q->where('categories.id', $categoryId);
+        });
+    })
+    ->withCount('attendees')
+    ->having('attendees_count', '<', DB::raw('events.capacity'))
+    ->orderBy('events.start_date')
+    ->paginate(20);
+
+
+
+This query performs a complex event search based on user input, including venue and city information, date filtering, category filtering, and available capacity.
+
+Employee Performance Analysis:
+$employeePerformance = Employee::select('employees.*')
+    ->withCount(['tasks' => function ($query) {
+        $query->where('status', 'completed')
+              ->whereBetween('completed_at', [now()->startOfMonth(), now()->endOfMonth()]);
+    }])
+    ->withAvg(['performance_reviews' => function ($query) {
+        $query->where('year', now()->year);
+    }], 'rating')
+    ->withSum(['sales' => function ($query) {
+        $query->whereBetween('created_at', [now()->startOfYear(), now()->endOfYear()]);
+    }], 'amount')
+    ->having('tasks_count', '>', 10)
+    ->orderByDesc('sales_sum_amount')
+    ->limit(10)
+    ->get();
+
+
+
+This query analyzes employee performance, including completed tasks this month, average performance review rating this year, and total sales amount this year.
+
+Restaurant Menu Item Popularity:
+$popularItems = MenuItem::select('menu_items.*', 'categories.name as category_name')
+    ->join('categories', 'menu_items.category_id', '=', 'categories.id')
+    ->withCount(['orderItems as times_ordered' => function ($query) {
+        $query->whereBetween('created_at', [now()->startOfWeek(), now()->endOfWeek()]);
+    }])
+    ->withAvg('reviews', 'rating')
+    ->having('times_ordered', '>', 0)
+    ->orderByDesc('times_ordered')
+    ->orderByDesc('reviews_avg_rating')
+    ->take(20)
+    ->get();
+
+
+
+This query fetches popular menu items, including their category, number of times ordered this week, and average review rating.
+
+Social Media Post Engagement:
+$engagingPosts = Post::select('posts.*', 'users.name as author_name')
+    ->join('users', 'posts.user_id', '=', 'users.id')
+    ->withCount(['likes', 'comments', 'shares'])
+    ->withSum('impressions', 'count')
+    ->addSelect([
+        'engagement_rate' => DB::raw('(likes_count + comments_count + shares_count) / impressions_sum_count * 100')
+    ])
+    ->having('impressions_sum_count', '>', 1000)
+    ->orderByDesc('engagement_rate')
+    ->take(50)
+    ->get();
+
+
+
+This query calculates the engagement rate for posts with over 1000 impressions and returns the top 50 most engaging posts.
+
+E-commerce Product Recommendations:
+$userId = auth()->id();
+$recommendations = Product::select('products.*')
+    ->withCount(['orderItems' => function ($query) use ($userId) {
+        $query->whereHas('order', function ($q) use ($userId) {
+            $q->where('user_id', $userId);
+        });
+    }])
+    ->whereDoesntHave('orderItems', function ($query) use ($userId) {
+        $query->whereHas('order', function ($q) use ($userId) {
+            $q->where('user_id', $userId);
+        });
+    })
+    ->whereHas('categories', function ($query) use ($userId) {
+        $query->whereIn('categories.id', function ($subquery) use ($userId) {
+            $subquery->select('categories.id')
+                ->from('categories')
+                ->join('product_category', 'categories.id', '=', 'product_category.category_id')
+                ->join('products', 'product_category.product_id', '=', 'products.id')
+                ->join('order_items', 'products.id', '=', 'order_items.product_id')
+                ->join('orders', 'order_items.order_id', '=', 'orders.id')
+                ->where('orders.user_id', $userId);
+        });
+    })
+    ->orderByDesc('order_items_count')
+    ->take(10)
+    ->get();
+
+
+
+This query generates product recommendations for a user based on their purchase history and category preferences.
+
+Project Resource Allocation:
+$projectResources = Project::select('projects.*')
+    ->with(['tasks' => function ($query) {
+        $query->select('id', 'project_id', 'status', 'due_date')
+              ->where('status', '!=', 'completed')
+              ->orderBy('due_date');
+    }])
+    ->withCount(['tasks as pending_tasks' => function ($query) {
+        $query->where('status', '!=', 'completed');
+    }])
+    ->addSelect([
+        'assigned_employees' => Employee::selectRaw('COUNT(DISTINCT employees.id)')
+            ->join('task_assignments', 'employees.id', '=', 'task_assignments.employee_id')
+            ->join('tasks', 'task_assignments.task_id', '=', 'tasks.id')
+            ->whereColumn('tasks.project_id', 'projects.id')
+            ->where('tasks.status', '!=', 'completed')
+    ])
+    ->addSelect([
+        'total_estimated_hours' => Task::selectRaw('SUM(estimated_hours)')
+            ->whereColumn('project_id', 'projects.id')
+            ->where('status', '!=', 'completed')
+    ])
+    ->where('status', 'active')
+    ->having('pending_tasks', '>', 0)
+    ->orderByDesc('total_estimated_hours')
+    ->paginate(15);
+
+
+
+This query retrieves active projects with pending tasks, including the number of assigned employees and total estimated hours for incomplete tasks.
+
+Customer Segmentation for Marketing:
+$customerSegments = Customer::select('customers.*')
+    ->addSelect([
+        'total_orders' => Order::selectRaw('COUNT(*)')
+            ->whereColumn('customer_id', 'customers.id')
+            ->where('created_at', '>', now()->subYear()),
+        'total_spent' => Order::selectRaw('SUM(total_amount)')
+            ->whereColumn('customer_id', 'customers.id')
+            ->where('created_at', '>', now()->subYear()),
+        'last_order_date' => Order::select('created_at')
+            ->whereColumn('customer_id', 'customers.id')
+            ->latest()
+            ->take(1)
+    ])
+    ->addSelect([
+        'favorite_category' => DB::raw('(
+            SELECT categories.name
+            FROM categories
+            JOIN product_category ON categories.id = product_category.category_id
+            JOIN products ON product_category.product_id = products.id
+            JOIN order_items ON products.id = order_items.product_id
+            JOIN orders ON order_items.order_id = orders.id
+            WHERE orders.customer_id = customers.id
+            GROUP BY categories.id
+            ORDER BY COUNT(*) DESC
+            LIMIT 1
+        )')
+    ])
+    ->addSelect([
+        'segment' => DB::raw('
+            CASE
+                WHEN total_orders > 10 AND total_spent > 1000 THEN "VIP"
+                WHEN total_orders > 5 AND total_spent > 500 THEN "Regular"
+                WHEN last_order_date < NOW() - INTERVAL 6 MONTH THEN "At Risk"
+                ELSE "New"
+            END
+        ')
+    ])
+    ->having('total_orders', '>', 0)
+    ->orderByDesc('total_spent')
+    ->paginate(50);
+
+
+
+This complex query segments customers based on their order history, total spend, and last order date, also identifying their favorite product category.
+
+These examples demonstrate various advanced techniques in Eloquent queries, including subqueries, complex joins, conditional aggregates, raw SQL expressions, and dynamic query building. They showcase how to handle real-world scenarios that often require combining data from multiple related tables and performing complex calculations.
+
+
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
