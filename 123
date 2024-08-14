@@ -889,3 +889,102 @@ The method you choose depends on your specific environment, the size of your dat
 
 Try again with different context
 Add context...
+
+
+To achieve this in Laravel, you can use Eloquent relationships and query builders. Here's a solution that will give you the desired result:
+
+First, let's assume you have the following models:
+
+// app/Models/Project.php
+class Project extends Model
+{
+    public function projectLinks()
+    {
+        return $this->hasMany(ProjectLink::class, 'id_project');
+    }
+}
+
+// app/Models/ProjectLink.php
+class ProjectLink extends Model
+{
+    public function project()
+    {
+        return $this->belongsTo(Project::class, 'id_project');
+    }
+
+    public function status()
+    {
+        return $this->belongsTo(Status::class, 'id_status');
+    }
+}
+
+// app/Models/Status.php
+class Status extends Model
+{
+    public function projectLinks()
+    {
+        return $this->hasMany(ProjectLink::class, 'id_status');
+    }
+}
+
+
+
+Now, here's the Laravel query to get the latest status for each project:
+
+use App\Models\Project;
+use Illuminate\Support\Facades\DB;
+
+$latestProjectStatuses = Project::select('projects.id_project', 'statuses.status_title', 'statuses.status_content')
+    ->join('project_links', 'projects.id_project', '=', 'project_links.id_project')
+    ->join('statuses', 'project_links.id_status', '=', 'statuses.id_status')
+    ->joinSub(
+        ProjectLink::select('id_project', DB::raw('MAX(GREATEST(statuses.created_at, statuses.updated_at)) as latest_update'))
+            ->join('statuses', 'project_links.id_status', '=', 'statuses.id_status')
+            ->groupBy('id_project'),
+        'latest_links',
+        function ($join) {
+            $join->on('projects.id_project', '=', 'latest_links.id_project')
+                 ->whereRaw('GREATEST(statuses.created_at, statuses.updated_at) = latest_links.latest_update');
+        }
+    )
+    ->get();
+
+
+
+Let's break down this query:
+
+We start with the Project model and select the columns we need from all three tables.
+
+We join the project_links and statuses tables to get the status information.
+
+We use a subquery (with joinSub) to find the latest update for each project. This subquery:
+
+Selects the id_project and the maximum of either created_at or updated_at (whichever is later) for each project.
+Groups the results by id_project to get one result per project.
+We join this subquery back to our main query, ensuring that we only get the status that matches the latest update time for each project.
+
+Finally, we use get() to execute the query and retrieve the results.
+
+The result will be a collection where each item has id_project, status_title, and status_content, representing the latest status for each project.
+
+You can use this query in a controller method like this:
+
+public function getLatestProjectStatuses()
+{
+    $latestProjectStatuses = Project::select('projects.id_project', 'statuses.status_title', 'statuses.status_content')
+        ->join('project_links', 'projects.id_project', '=', 'project_links.id_project')
+        ->join('statuses', 'project_links.id_status', '=', 'statuses.id_status')
+        ->joinSub(
+            ProjectLink::select('id_project', DB::raw('MAX(GREATEST(statuses.created_at, statuses.updated_at)) as latest_update'))
+                ->join('statuses', 'project_links.id_status', '=', 'statuses.id_status')
+                ->groupBy('id_project'),
+            'latest_links',
+            function ($join) {
+                $join->on('projects.id_project', '=', 'latest_links.id_project')
+                     ->whereRaw('GREATEST(statuses.created_at, statuses.updated_at) = latest_links.latest_update');
+            }
+        )
+        ->get();
+
+    return response()->json($latestProjectStatuses);
+}
