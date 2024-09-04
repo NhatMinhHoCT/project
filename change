@@ -1,0 +1,91 @@
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rules\Password;
+
+public function changePassword(Request $request)
+{
+    $request->validate([
+        'current_password' => ['required', 'current_password'],
+        'new_password' => ['required', 'confirmed', Password::min(8)
+            ->mixedCase()
+            ->numbers()
+            ->symbols()
+            ->uncompromised(),
+        ],
+    ]);
+
+    $user = Auth::user();
+    $user->password = Hash::make($request->new_password);
+    $user->save();
+
+    // Logout from all devices
+    Auth::logoutOtherDevices($request->new_password);
+
+    // Optional: You can also regenerate the session token
+    $request->session()->regenerate();
+
+    return redirect()->route('dashboard')->with('status', 'Password changed successfully.');
+}
+
+
+
+This method does the following:
+
+Validates the current password and new password
+Updates the user's password
+Logs out the user from all other devices
+Regenerates the session token for added security
+Route for changing password:
+Route::post('/change-password', [PasswordController::class, 'changePassword'])->name('password.change');
+
+
+
+View for changing password:
+<form method="POST" action="{{ route('password.change') }}">
+    @csrf
+    <div>
+        <label for="current_password">Current Password</label>
+        <input id="current_password" type="password" name="current_password" required>
+    </div>
+    <div>
+        <label for="new_password">New Password</label>
+        <input id="new_password" type="password" name="new_password" required>
+    </div>
+    <div>
+        <label for="new_password_confirmation">Confirm New Password</label>
+        <input id="new_password_confirmation" type="password" name="new_password_confirmation" required>
+    </div>
+    <button type="submit">Change Password</button>
+</form>
+
+
+
+Regex for password validation:
+Here's a regex that matches a password with at least 8 characters, one lowercase letter, one uppercase letter, one number, and one special character:
+
+^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$
+
+
+
+Explanation:
+
+^ : Start of the string
+(?=.*[a-z]) : At least one lowercase letter
+(?=.*[A-Z]) : At least one uppercase letter
+(?=.*\d) : At least one digit
+(?=.*[@$!%*?&]) : At least one special character (you can modify this set)
+[A-Za-z\d@$!%*?&]{8,} : At least 8 characters long, consisting of allowed characters
+$ : End of the string
+You can use this regex in your Laravel validation rules like this:
+
+'new_password' => [
+    'required',
+    'confirmed',
+    'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/',
+],
+
+
+
+However, Laravel provides a more readable way to define password rules, as shown in the changePassword method above. The Password facade allows you to chain rules, which is more maintainable and easier to read than a complex regex.
+
+Remember to handle errors and display appropriate messages to the user if the password change fails or if the validation fails. Also, ensure that your application is using HTTPS to protect sensitive information during transmission.
