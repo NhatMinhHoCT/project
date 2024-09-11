@@ -84,7 +84,64 @@ You can use this regex in your Laravel validation rules like this:
     'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/',
 ],
 
+To query the bonus data for a specific time range, you can use a SQL query that checks for overlapping date ranges. Here's a SQL command that will return the bonus information for a given time period:
 
+SELECT IDBonus, IDUser, Bonus, StartDate, EndDate
+FROM bonus
+WHERE 
+    (StartDate <= :endDate AND EndDate >= :startDate)
+    AND IDUser = :userId
+ORDER BY StartDate;
+
+Copy
+
+Apply
+
+In this query:
+
+:startDate is the start of the period you're querying (e.g., '2023-03-01' for March 1st)
+:endDate is the end of the period you're querying (e.g., '2023-03-31' for March 31st)
+:userId is the ID of the user you're querying for
+The WHERE clause checks if the bonus period overlaps with the queried period. It will return all bonus entries that:
+
+Start before or on the end of the queried period, AND
+End after or on the start of the queried period
+This ensures that you get all bonuses that were active for any part of the queried period.
+
+Here's how you might use this in a PHP script with PDO:
+
+$startDate = '2023-03-01';
+$endDate = '2023-03-31';
+$userId = 1;
+
+$stmt = $pdo->prepare("
+    SELECT IDBonus, IDUser, Bonus, StartDate, EndDate
+    FROM bonus
+    WHERE 
+        (StartDate <= :endDate AND EndDate >= :startDate)
+        AND IDUser = :userId
+    ORDER BY StartDate
+");
+
+$stmt->execute([
+    ':startDate' => $startDate,
+    ':endDate' => $endDate,
+    ':userId' => $userId
+]);
+
+$bonuses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($bonuses as $bonus) {
+    echo "Bonus: {$bonus['Bonus']}, Start: {$bonus['StartDate']}, End: {$bonus['EndDate']}\n";
+}
+
+Copy
+
+Apply
+
+This query will return all matching bonus entries for the specified user and time period. In your example, if you query for March 2023, it would return both bonus entries because they both overlap with that month.
+
+Remember to properly sanitize and validate user inputs before using them in your SQL queries to prevent SQL injection attacks.
 
 However, Laravel provides a more readable way to define password rules, as shown in the changePassword method above. The Password facade allows you to chain rules, which is more maintainable and easier to read than a complex regex.
 
