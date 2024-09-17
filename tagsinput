@@ -1,14 +1,211 @@
-SELECT *
-FROM bonus
-WHERE AppliedDate BETWEEN :startDate AND :endDate
-   OR AppliedDate = (
-      SELECT MAX(AppliedDate)
-      FROM bonus
-      WHERE AppliedDate < :startDate
-   )
-   OR AppliedDate = (
-      SELECT MIN(AppliedDate)
-      FROM bonus
-      WHERE AppliedDate > :endDate
-   )
-ORDER BY AppliedDate;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Responsive Table with Synchronized Hover Effect</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <table class="responsive-table">
+        <tr>
+            <td><a href="#">Link 1</a></td>
+            <td><a href="#">Link 2</a></td>
+            <td><a href="#">Link 3</a></td>
+        </tr>
+        <tr>
+            <td><a href="#">Link 4</a></td>
+            <td><a href="#">Link 5</a></td>
+            <td><a href="#">Link 6</a></td>
+        </tr>
+    </table>
+</body>
+</html>
+
+Copy
+
+Apply
+
+index.html
+Now, let's create the CSS file to style the table and implement the synchronized hover effect:
+
+.responsive-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.responsive-table td {
+    padding: 10px;
+    border: 1px solid #ddd;
+    transition: background-color 0.3s ease;
+}
+
+.responsive-table td a {
+    text-decoration: none;
+    color: #333;
+    display: block;
+    transition: color 0.3s ease;
+}
+
+.responsive-table td:hover {
+    background-color: #f0f0f0;
+}
+
+.responsive-table td:hover a {
+    color: #007bff;
+}
+
+@media screen and (max-width: 600px) {
+    .responsive-table td {
+        display: block;
+        text-align: center;
+    }
+}
+
+Copy
+
+Apply
+
+styles.css
+In this CSS:
+
+We set a transition for both the <td> and <a> elements with the same duration (0.3s) and timing function (ease).
+The :hover pseudo-class is applied to the <td> element, changing its background color.
+We use the td:hover a selector to change the link color at the same time as the background color change.
+By setting the same transition properties for both elements and using the parent <td> hover state to trigger changes in both the <td> and <a> elements, we ensure that the color changes occur simultaneously.
+
+This approach creates a smooth, synchronized hover effect where both the table cell background and the link color change at the same time when the user hovers over a cell.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+honhatminh1510
+can you give me some idea for design a database and template. I want to have the data about the money reward for every employee. The concepts is like the company has a list of employees, each employee has a money reward (employee 1 has money reward equals to 2 usd, which means his/her income will be added 2 dollars each month). There also a default reward money, and special reward money for special day like new year. If the new employee works for the company, there reward will be default. After a period of time, there reward will increase, but every reward of one employee must be stored so that we can query the reward from the past
+
+
+
+Claude 3.5 Sonnet
+Certainly! I'll provide you with a database design and a template for managing employee rewards as you've described. This design will allow for default rewards, special rewards, and tracking of reward history for each employee.
+
+Here's a proposed database schema:
+
+CREATE TABLE employees (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    hire_date DATE NOT NULL
+);
+
+CREATE TABLE reward_types (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    description TEXT
+);
+
+CREATE TABLE rewards (
+    id SERIAL PRIMARY KEY,
+    reward_type_id INTEGER REFERENCES reward_types(id),
+    amount DECIMAL(10, 2) NOT NULL,
+    effective_date DATE NOT NULL,
+    expiration_date DATE
+);
+
+CREATE TABLE employee_rewards (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id),
+    reward_id INTEGER REFERENCES rewards(id),
+    start_date DATE NOT NULL,
+    end_date DATE
+);
+
+Copy
+
+Apply
+
+schema.sql
+Now, let's break down the schema and provide some explanations:
+
+employees table: Stores basic information about employees.
+reward_types table: Defines different types of rewards (e.g., default, performance-based, special day).
+rewards table: Stores the actual reward amounts and their validity periods.
+employee_rewards table: Links employees to their rewards and tracks when each reward is applicable.
+Here's how you might use this schema:
+
+Insert a default reward:
+INSERT INTO reward_types (name, description) VALUES ('Default', 'Default reward for new employees');
+INSERT INTO rewards (reward_type_id, amount, effective_date) VALUES (1, 2.00, '2023-01-01');
+
+Copy
+
+Apply
+
+When a new employee joins:
+INSERT INTO employees (name, email, hire_date) VALUES ('John Doe', 'john@example.com', '2023-06-01');
+INSERT INTO employee_rewards (employee_id, reward_id, start_date) 
+VALUES (
+    (SELECT id FROM employees WHERE email = 'john@example.com'),
+    (SELECT id FROM rewards WHERE reward_type_id = 1 AND effective_date <= '2023-06-01' ORDER BY effective_date DESC LIMIT 1),
+    '2023-06-01'
+);
+
+Copy
+
+Apply
+
+To increase an employee's reward:
+INSERT INTO rewards (reward_type_id, amount, effective_date) VALUES (1, 2.50, '2023-07-01');
+INSERT INTO employee_rewards (employee_id, reward_id, start_date) 
+VALUES (
+    (SELECT id FROM employees WHERE email = 'john@example.com'),
+    (SELECT id FROM rewards WHERE amount = 2.50 AND effective_date = '2023-07-01'),
+    '2023-07-01'
+);
+UPDATE employee_rewards 
+SET end_date = '2023-06-30'
+WHERE employee_id = (SELECT id FROM employees WHERE email = 'john@example.com')
+  AND end_date IS NULL
+  AND start_date < '2023-07-01';
+
+Copy
+
+Apply
+
+To add a special reward for a specific day:
+INSERT INTO reward_types (name, description) VALUES ('New Year Bonus', 'Special bonus for New Year');
+INSERT INTO rewards (reward_type_id, amount, effective_date, expiration_date) 
+VALUES ((SELECT id FROM reward_types WHERE name = 'New Year Bonus'), 10.00, '2024-01-01', '2024-01-01');
+
+-- Apply to all current employees
+INSERT INTO employee_rewards (employee_id, reward_id, start_date, end_date)
+SELECT e.id, r.id, r.effective_date, r.expiration_date
+FROM employees e, rewards r
+WHERE r.reward_type_id = (SELECT id FROM reward_types WHERE name = 'New Year Bonus')
+  AND r.effective_date = '2024-01-01';
+
+Copy
+
+Apply
+
+To query an employee's reward history:
+SELECT e.name, r.amount, er.start_date, er.end_date, rt.name as reward_type
+FROM employees e
+JOIN employee_rewards er ON e.id = er.employee_id
+JOIN rewards r ON er.reward_id = r.id
+JOIN reward_types rt ON r.reward_type_id = rt.id
+WHERE e.email = 'john@example.com'
+ORDER BY er.start_date;
+
+Copy
+
+Apply
+
+This design allows for flexibility in managing rewards, tracking history, and handling special cases. You can easily extend it to include more complex reward structures or additional employee information as needed.
+
+For a user interface, you might consider creating forms for:
+
+Adding/editing employees
+Managing reward types
+Setting up new rewards
+Assigning rewards to employees
+Viewing reward history for each employee
+Remember to implement proper security measures, such as input validation and access controls, when building the actual application.
