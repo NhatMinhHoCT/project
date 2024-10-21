@@ -1,203 +1,52 @@
-Thank you for providing this detailed information about the bonus calculation process. Based on your description, I'll outline an efficient way to query the data and calculate the bonus for each employee for each day and month. We'll use Laravel's Eloquent ORM for database queries and create a service class to handle the bonus calculations.
+Thank you for bringing that to my attention. It seems the database system you're using doesn't support some of the more advanced SQL features. Let's modify the query to use a more universally compatible approach:
 
-First, let's define the necessary database tables and models:
-
-employees table and Employee model
-work_logs table and WorkLog model (for storing actual time, actual quantity, target time, target quantity)
-bonus_rates table and BonusRate model (for storing unit of bonus and applied dates)
-Here's an example of how these models might look:
-
-// app/Models/Employee.php
-class Employee extends Model
-{
-    public function workLogs()
-    {
-        return $this->hasMany(WorkLog::class);
-    }
-
-    public function bonusRates()
-    {
-        return $this->hasMany(BonusRate::class);
-    }
-}
-
-// app/Models/WorkLog.php
-class WorkLog extends Model
-{
-    public function employee()
-    {
-        return $this->belongsTo(Employee::class);
-    }
-}
-
-// app/Models/BonusRate.php
-class BonusRate extends Model
-{
-    public function employee()
-    {
-        return $this->belongsTo(Employee::class);
-    }
-}
+SELECT t.IDTable, t.TenBan, t.Tang, o.IDOrder, o.TGBatDau, o.TGKetThuc
+FROM Tables t
+LEFT JOIN [Order] o ON t.IDTable = o.IDTable
+WHERE o.IDOrder IS NULL OR o.IDOrder = (
+    SELECT TOP 1 IDOrder
+    FROM [Order] o2
+    WHERE o2.IDTable = t.IDTable
+    ORDER BY ABS(DATEDIFF('n', o2.TGBatDau, Now()))
+)
 
 Copy
 
 Apply
 
-Now, let's create a service class to handle the bonus calculations:
+This query uses a correlated subquery to find the order with the start time nearest to the current time for each table. It's more compatible with various database systems, including MS Access. The query will return one record per table, either with no order information (if the table has no orders) or with the order closest to the current time.
 
-// app/Services/BonusCalculationService.php
-namespace App\Services;
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+honhatminh1510
+Can you add iif condition so that it will return the table is available or not. 
 
-use App\Models\Employee;
-use App\Models\WorkLog;
-use App\Models\BonusRate;
-use Carbon\Carbon;
 
-class BonusCalculationService
-{
-    private $defaultBonusRate;
 
-    public function __construct($defaultBonusRate)
-    {
-        $this->defaultBonusRate = $defaultBonusRate;
-    }
+Claude 3.5 Sonnet
+Certainly! I'd be happy to add an IIF condition to determine if a table is available or not. Here's the updated query with the availability status:
 
-    public function calculateDailyBonus(Employee $employee, $date)
-    {
-        $workLogs = $this->getWorkLogs($employee, $date);
-        $bonusRate = $this->getBonusRate($employee, $date);
-
-        $totalBonus = 0;
-        foreach ($workLogs as $workLog) {
-            $difference = $this->calculateDifference($workLog);
-            $bonus = $this->calculateBonus($difference, $bonusRate);
-            $totalBonus += $bonus;
-        }
-
-        return $totalBonus;
-    }
-
-    public function calculateMonthlyBonus(Employee $employee, $year, $month)
-    {
-        $startDate = Carbon::create($year, $month, 1)->startOfMonth();
-        $endDate = $startDate->copy()->endOfMonth();
-
-        $dailyBonuses = [];
-        $currentDate = $startDate->copy();
-
-        while ($currentDate <= $endDate) {
-            $dailyBonuses[$currentDate->format('Y-m-d')] = $this->calculateDailyBonus($employee, $currentDate);
-            $currentDate->addDay();
-        }
-
-        return $dailyBonuses;
-    }
-
-    private function getWorkLogs(Employee $employee, $date)
-    {
-        return WorkLog::where('employee_id', $employee->id)
-            ->whereDate('date', $date)
-            ->get();
-    }
-
-    private function getBonusRate(Employee $employee, $date)
-    {
-        $bonusRate = BonusRate::where('employee_id', $employee->id)
-            ->where('applied_date', '<=', $date)
-            ->orderBy('applied_date', 'desc')
-            ->first();
-
-        return $bonusRate ? $bonusRate->rate : $this->defaultBonusRate;
-    }
-
-    private function calculateDifference($workLog)
-    {
-        $actualEfficiency = $workLog->actual_quantity / $workLog->actual_time;
-        $targetEfficiency = $workLog->target_quantity / $workLog->target_time;
-        return ($actualEfficiency - $targetEfficiency) / $targetEfficiency;
-    }
-
-    private function calculateBonus($difference, $bonusRate)
-    {
-        return (100 + $difference) / 100 * $bonusRate;
-    }
-}
+SELECT t.IDTable, t.TenBan, t.Tang, o.IDOrder, o.TGBatDau, o.TGKetThuc,
+    IIF(o.IDOrder IS NULL OR Now() < o.TGBatDau OR Now() > o.TGKetThuc, 'Available', 'Not Available') AS Status
+FROM Tables t
+LEFT JOIN [Order] o ON t.IDTable = o.IDTable
+WHERE o.IDOrder IS NULL OR o.IDOrder = (
+    SELECT TOP 1 IDOrder
+    FROM [Order] o2
+    WHERE o2.IDTable = t.IDTable
+    ORDER BY ABS(DATEDIFF('n', o2.TGBatDau, Now()))
+)
 
 Copy
 
 Apply
 
-Now, you can use this service in your controller to calculate bonuses efficiently:
+This query adds a new column called 'Status' using the IIF function. It checks if:
 
-// app/Http/Controllers/BonusController.php
-namespace App\Http\Controllers;
+There's no order for the table (o.IDOrder IS NULL), or
+The current time is before the start time of the order (Now() < o.TGBatDau), or
+The current time is after the end time of the order (Now() > o.TGKetThuc)
+If any of these conditions are true, the status is set to 'Available'. Otherwise, it's set to 'Not Available'.
 
-use App\Models\Employee;
-use App\Services\BonusCalculationService;
-use Carbon\Carbon;
-
-class BonusController extends Controller
-{
-    private $bonusCalculationService;
-
-    public function __construct(BonusCalculationService $bonusCalculationService)
-    {
-        $this->bonusCalculationService = $bonusCalculationService;
-    }
-
-    public function monthlyBonus($employeeId, $year, $month)
-    {
-        $employee = Employee::findOrFail($employeeId);
-        $monthlyBonuses = $this->bonusCalculationService->calculateMonthlyBonus($employee, $year, $month);
-
-        return response()->json($monthlyBonuses);
-    }
-
-    public function yearlyBonus($employeeId, $year)
-    {
-        $employee = Employee::findOrFail($employeeId);
-        $yearlyBonuses = [];
-
-        for ($month = 1; $month <= 12; $month++) {
-            $monthlyBonuses = $this->bonusCalculationService->calculateMonthlyBonus($employee, $year, $month);
-            $yearlyBonuses[$month] = array_sum($monthlyBonuses);
-        }
-
-        return response()->json($yearlyBonuses);
-    }
-}
-
-Copy
-
-Apply
-
-To optimize the database queries:
-
-Use eager loading to reduce the number of queries when fetching related data:
-$employees = Employee::with(['workLogs' => function ($query) use ($startDate, $endDate) {
-    $query->whereBetween('date', [$startDate, $endDate]);
-}])->get();
-
-Copy
-
-Apply
-
-Use database indexing on frequently queried columns (e.g., employee_id, date in the work_logs table, and applied_date in the bonus_rates table).
-
-Consider caching the results of bonus calculations for frequently accessed periods to reduce database load.
-
-If you need to calculate bonuses for many employees at once, consider using chunk processing to avoid memory issues:
-
-Employee::chunk(100, function ($employees) use ($year, $month) {
-    foreach ($employees as $employee) {
-        $monthlyBonuses = $this->bonusCalculationService->calculateMonthlyBonus($employee, $year, $month);
-        // Process or store the results
-    }
-});
-
-Copy
-
-Apply
-
-For large-scale applications, consider using a queue system to process bonus calculations asynchronously, especially for yearly calculations or when processing multiple employees.
-This approach provides an efficient way to calculate bonuses while keeping the code organized and maintainable. The BonusCalculationService encapsulates the logic for bonus calculations, making it easy to modify or extend in the future. The controller uses this service to provide the necessary data for your views.
+This enhancement provides a clear view of each table's availability status based on the current time and the nearest order. It's a great addition to help users quickly identify which tables can be booked right now.
