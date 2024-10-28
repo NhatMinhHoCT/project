@@ -200,3 +200,182 @@ Cleaner, more maintainable code
 Better separation of concerns
 Reusable product creation logic
 LINQ for efficient data transformation
+
+public class OrderItemPanel : Panel
+{
+    public int ProductId { get; private set; }
+    public Label NameLabel { get; private set; }
+    public Label QuantityLabel { get; private set; }
+    public Label PriceLabel { get; private set; }
+    public Button IncreaseButton { get; private set; }
+    public Button DecreaseButton { get; private set; }
+    public Button DeleteButton { get; private set; }
+    
+    private int quantity;
+    private decimal unitPrice;
+    
+    public OrderItemPanel(int productId, string name, decimal price)
+    {
+        ProductId = productId;
+        unitPrice = price;
+        quantity = 1;
+        InitializeComponents(name);
+        UpdatePrice();
+    }
+
+    private void InitializeComponents(string name)
+    {
+        this.Size = new Size(300, 50);
+        
+        NameLabel = new Label
+        {
+            Text = name,
+            Location = new Point(10, 15),
+            Size = new Size(120, 20)
+        };
+
+        DecreaseButton = new Button
+        {
+            Text = "-",
+            Location = new Point(140, 12),
+            Size = new Size(25, 25)
+        };
+
+        QuantityLabel = new Label
+        {
+            Text = "1",
+            Location = new Point(170, 15),
+            Size = new Size(30, 20),
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+
+        IncreaseButton = new Button
+        {
+            Text = "+",
+            Location = new Point(205, 12),
+            Size = new Size(25, 25)
+        };
+
+        PriceLabel = new Label
+        {
+            Location = new Point(235, 15),
+            Size = new Size(70, 20),
+            TextAlign = ContentAlignment.MiddleRight
+        };
+
+        DeleteButton = new Button
+        {
+            Text = "X",
+            Location = new Point(310, 12),
+            Size = new Size(25, 25)
+        };
+
+        this.Controls.AddRange(new Control[] { 
+            NameLabel, DecreaseButton, QuantityLabel, 
+            IncreaseButton, PriceLabel, DeleteButton 
+        });
+
+        SetupEvents();
+    }
+
+    private void SetupEvents()
+    {
+        IncreaseButton.Click += (s, e) => ChangeQuantity(1);
+        DecreaseButton.Click += (s, e) => ChangeQuantity(-1);
+    }
+
+    public void ChangeQuantity(int change)
+    {
+        int newQuantity = quantity + change;
+        if (newQuantity >= 1)
+        {
+            quantity = newQuantity;
+            QuantityLabel.Text = quantity.ToString();
+            UpdatePrice();
+        }
+    }
+
+    private void UpdatePrice()
+    {
+        PriceLabel.Text = $"${quantity * unitPrice:N0}";
+    }
+
+    public decimal GetTotalPrice()
+    {
+        return quantity * unitPrice;
+    }
+}
+
+Copy
+
+Apply
+
+OrderItemPanel.cs
+public partial class MainForm : Form
+{
+    private FlowLayoutPanel orderListPanel;
+    private Dictionary<int, OrderItemPanel> orderItems;
+    private Label totalLabel;
+
+    public MainForm()
+    {
+        InitializeComponent();
+        orderItems = new Dictionary<int, OrderItemPanel>();
+    }
+
+    private void AddToOrder(Product product)
+    {
+        if (orderItems.ContainsKey(product.Id))
+        {
+            orderItems[product.Id].ChangeQuantity(1);
+        }
+        else
+        {
+            OrderItemPanel orderItem = new OrderItemPanel(product.Id, product.Name, product.Price);
+            orderItem.DeleteButton.Click += (s, e) => RemoveOrderItem(product.Id);
+            orderItems.Add(product.Id, orderItem);
+            orderListPanel.Controls.Add(orderItem);
+        }
+        UpdateTotal();
+    }
+
+    private void RemoveOrderItem(int productId)
+    {
+        if (orderItems.ContainsKey(productId))
+        {
+            orderListPanel.Controls.Remove(orderItems[productId]);
+            orderItems.Remove(productId);
+            UpdateTotal();
+        }
+    }
+
+    private void UpdateTotal()
+    {
+        decimal total = orderItems.Values.Sum(item => item.GetTotalPrice());
+        totalLabel.Text = $"Total: ${total:N0}";
+    }
+
+    // Call this when a product is selected from product list
+    private void ProductCard_Click(object sender, EventArgs e)
+    {
+        ProductCard card = (ProductCard)sender;
+        Product product = new Product(card.ProductId, card.NameLabel.Text, "", card.Price);
+        AddToOrder(product);
+    }
+}
+
+Copy
+
+Apply
+
+MainForm.cs
+This implementation provides:
+
+Dynamic order item panels with quantity control
+Automatic quantity increase for existing items
+Price calculation per item and total
+Clean removal of items
+Organized layout in FlowLayoutPanel
+Event handling for all buttons
+Dictionary to track existing order items
+The code maintains a clean structure and handles all required functionality efficiently.
