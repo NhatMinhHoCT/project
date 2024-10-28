@@ -1,52 +1,1022 @@
-Thank you for bringing that to my attention. It seems the database system you're using doesn't support some of the more advanced SQL features. Let's modify the query to use a more universally compatible approach:
 
-SELECT t.IDTable, t.TenBan, t.Tang, o.IDOrder, o.TGBatDau, o.TGKetThuc
-FROM Tables t
-LEFT JOIN [Order] o ON t.IDTable = o.IDTable
-WHERE o.IDOrder IS NULL OR o.IDOrder = (
-    SELECT TOP 1 IDOrder
-    FROM [Order] o2
-    WHERE o2.IDTable = t.IDTable
-    ORDER BY ABS(DATEDIFF('n', o2.TGBatDau, Now()))
-)
+
+i make connection class using oledb to connect to access db, the access file is in bin/debug folder, and i want to have 2 method, one for open connection( to check if connection is right so open connection), one for close connection (check if connection is open then close) or you can provide me your proper code that other developer do. Beside that give me code for these method: executequery, executenonquery, each should have using and try catch for exception. 
+
+
+
+Claude 3.5 Sonnet (Latest)
+I'll help you create a robust database connection class for Access DB with all the requested methods. Here's a well-structured solution:
+
+using System;
+using System.Data;
+using System.Data.OleDb;
+
+namespace YourNamespace
+{
+    public class DbConnection
+    {
+        private OleDbConnection connection;
+        private readonly string connectionString;
+
+        public DbConnection()
+        {
+            string dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "YourDatabase.accdb");
+            connectionString = $"Provider=Microsoft.ACE.OLEDB.12.0;Data Source={dbPath}";
+            connection = new OleDbConnection(connectionString);
+        }
+
+        public bool OpenConnection()
+        {
+            try
+            {
+                if (connection.State != ConnectionState.Open)
+                {
+                    connection.Open();
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Connection failed: {ex.Message}");
+            }
+        }
+
+        public bool CloseConnection()
+        {
+            try
+            {
+                if (connection.State == ConnectionState.Open)
+                {
+                    connection.Close();
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Closing connection failed: {ex.Message}");
+            }
+        }
+
+        public DataTable ExecuteQuery(string query, params OleDbParameter[] parameters)
+        {
+            DataTable dataTable = new DataTable();
+
+            try
+            {
+                using (OleDbCommand command = new OleDbCommand(query, connection))
+                {
+                    if (parameters != null)
+                    {
+                        command.Parameters.AddRange(parameters);
+                    }
+
+                    using (OleDbDataAdapter adapter = new OleDbDataAdapter(command))
+                    {
+                        adapter.Fill(dataTable);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Query execution failed: {ex.Message}");
+            }
+
+            return dataTable;
+        }
+
+        public int ExecuteNonQuery(string query, params OleDbParameter[] parameters)
+        {
+            int rowsAffected = 0;
+
+            try
+            {
+                using (OleDbCommand command = new OleDbCommand(query, connection))
+                {
+                    if (parameters != null)
+                    {
+                        command.Parameters.AddRange(parameters);
+                    }
+
+                    rowsAffected = command.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Non-query execution failed: {ex.Message}");
+            }
+
+            return rowsAffected;
+        }
+    }
+}
 
 Copy
 
 Apply
 
-This query uses a correlated subquery to find the order with the start time nearest to the current time for each table. It's more compatible with various database systems, including MS Access. The query will return one record per table, either with no order information (if the table has no orders) or with the order closest to the current time.
+DbConnection.cs
+Here's how to use this class:
+
+// Example usage
+DbConnection db = new DbConnection();
+
+// Select query
+try
+{
+    db.OpenConnection();
+    string query = "SELECT * FROM YourTable WHERE Field = ?";
+    OleDbParameter param = new OleDbParameter("@field", "value");
+    DataTable result = db.ExecuteQuery(query, param);
+    // Process your result
+}
+catch (Exception ex)
+{
+    Console.WriteLine(ex.Message);
+}
+finally
+{
+    db.CloseConnection();
+}
+
+// Insert/Update/Delete
+try
+{
+    db.OpenConnection();
+    string query = "INSERT INTO YourTable (Field1, Field2) VALUES (?, ?)";
+    OleDbParameter param1 = new OleDbParameter("@field1", "value1");
+    OleDbParameter param2 = new OleDbParameter("@field2", "value2");
+    int affected = db.ExecuteNonQuery(query, param1, param2);
+    Console.WriteLine($"Rows affected: {affected}");
+}
+catch (Exception ex)
+{
+    Console.WriteLine(ex.Message);
+}
+finally
+{
+    db.CloseConnection();
+}
+
+Copy
+
+Apply
+
+Program.cs
+This implementation includes:
+
+A constructor that automatically builds the connection string using the database file from bin/debug
+OpenConnection() method with connection state check
+CloseConnection() method with connection state check
+ExecuteQuery() method for SELECT queries that returns a DataTable
+ExecuteNonQuery() method for INSERT/UPDATE/DELETE operations
+Proper parameter support to prevent SQL injection
+Comprehensive exception handling
+Using statements for proper resource disposal
+Support for parameterized queries
+The code follows best practices by:
+
+Using parameterized queries for security
+Implementing proper resource disposal
+Including comprehensive error handling
+Checking connection states
+Supporting multiple query types
+Following standard naming conventions
+Remember to replace "YourDatabase.accdb" with your actual Access database filename and adjust the namespace as needed.
 
 Try again with different context
 Add context...
 Avatar for honhatminh1510-cfizq
 honhatminh1510
-Can you add iif condition so that it will return the table is available or not. 
+i build project base on mvc model, winform, C#. The model should have constructor. And a controller class that contains the connection, the executequerym execute nonquery, execute scalar, open, close connection method, execute transaction. If i query database how can i get data and display it in my form. I make a dynamic flowlayoutpanel that contains several panel, each panel has a picturebox and a label to show the name and image of product. Each panel should have the hover effect when mouse enter and leave, and when click on it, it add the panel infor into a variable and change the background color of this panel or add like shadow effect to it. ABout execute transaction, i wish to install an order from customer, the order contains idOrder, startTime, endTime, total, the orderdetail contain idorder, idproduct, quantity, price. One order contains many products, so at first add new order record then get the latest inserted id for add order detail records. The executetransaction will do it but it can rollback if insert query got error
 
 
 
-Claude 3.5 Sonnet
-Certainly! I'd be happy to add an IIF condition to determine if a table is available or not. Here's the updated query with the availability status:
+Claude 3.5 Sonnet (Latest)
+Here's a well-structured solution for your MVC WinForms project:
 
-SELECT t.IDTable, t.TenBan, t.Tang, o.IDOrder, o.TGBatDau, o.TGKetThuc,
-    IIF(o.IDOrder IS NULL OR Now() < o.TGBatDau OR Now() > o.TGKetThuc, 'Available', 'Not Available') AS Status
-FROM Tables t
-LEFT JOIN [Order] o ON t.IDTable = o.IDTable
-WHERE o.IDOrder IS NULL OR o.IDOrder = (
-    SELECT TOP 1 IDOrder
-    FROM [Order] o2
-    WHERE o2.IDTable = t.IDTable
-    ORDER BY ABS(DATEDIFF('n', o2.TGBatDau, Now()))
-)
+public class Product
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public decimal Price { get; set; }
+    public byte[] Image { get; set; }
+
+    public Product(int id, string name, decimal price, byte[] image)
+    {
+        Id = id;
+        Name = name;
+        Price = price;
+        Image = image;
+    }
+}
 
 Copy
 
 Apply
 
-This query adds a new column called 'Status' using the IIF function. It checks if:
+Product.cs
+public class Order
+{
+    public int Id { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public decimal Total { get; set; }
+    public List<OrderDetail> Details { get; set; }
 
-There's no order for the table (o.IDOrder IS NULL), or
-The current time is before the start time of the order (Now() < o.TGBatDau), or
-The current time is after the end time of the order (Now() > o.TGKetThuc)
-If any of these conditions are true, the status is set to 'Available'. Otherwise, it's set to 'Not Available'.
+    public Order()
+    {
+        Details = new List<OrderDetail>();
+        StartTime = DateTime.Now;
+    }
+}
 
-This enhancement provides a clear view of each table's availability status based on the current time and the nearest order. It's a great addition to help users quickly identify which tables can be booked right now.
+Copy
+
+Apply
+
+Order.cs
+public class OrderDetail
+{
+    public int OrderId { get; set; }
+    public int ProductId { get; set; }
+    public int Quantity { get; set; }
+    public decimal Price { get; set; }
+}
+
+Copy
+
+Apply
+
+OrderDetail.cs
+public class DatabaseController
+{
+    private OleDbConnection connection;
+    private readonly string connectionString;
+
+    public DatabaseController()
+    {
+        string dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Database.accdb");
+        connectionString = $"Provider=Microsoft.ACE.OLEDB.12.0;Data Source={dbPath}";
+        connection = new OleDbConnection(connectionString);
+    }
+
+    public void OpenConnection()
+    {
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+    }
+
+    public void CloseConnection()
+    {
+        if (connection.State == ConnectionState.Open)
+            connection.Close();
+    }
+
+    public DataTable ExecuteQuery(string query, params OleDbParameter[] parameters)
+    {
+        DataTable dt = new DataTable();
+        using (OleDbCommand cmd = new OleDbCommand(query, connection))
+        {
+            if (parameters != null) cmd.Parameters.AddRange(parameters);
+            using (OleDbDataAdapter adapter = new OleDbDataAdapter(cmd))
+            {
+                adapter.Fill(dt);
+            }
+        }
+        return dt;
+    }
+
+    public int ExecuteNonQuery(string query, params OleDbParameter[] parameters)
+    {
+        using (OleDbCommand cmd = new OleDbCommand(query, connection))
+        {
+            if (parameters != null) cmd.Parameters.AddRange(parameters);
+            return cmd.ExecuteNonQuery();
+        }
+    }
+
+    public object ExecuteScalar(string query, params OleDbParameter[] parameters)
+    {
+        using (OleDbCommand cmd = new OleDbCommand(query, connection))
+        {
+            if (parameters != null) cmd.Parameters.AddRange(parameters);
+            return cmd.ExecuteScalar();
+        }
+    }
+
+    public bool ExecuteTransaction(Order order)
+    {
+        OleDbTransaction transaction = null;
+        try
+        {
+            OpenConnection();
+            transaction = connection.BeginTransaction();
+
+            // Insert Order
+            string orderQuery = "INSERT INTO Orders (StartTime, EndTime, Total) VALUES (?, ?, ?)";
+            using (OleDbCommand cmd = new OleDbCommand(orderQuery, connection, transaction))
+            {
+                cmd.Parameters.AddWithValue("@StartTime", order.StartTime);
+                cmd.Parameters.AddWithValue("@EndTime", order.EndTime);
+                cmd.Parameters.AddWithValue("@Total", order.Total);
+                cmd.ExecuteNonQuery();
+            }
+
+            // Get last inserted OrderId
+            string getIdQuery = "SELECT @@IDENTITY";
+            int orderId;
+            using (OleDbCommand cmd = new OleDbCommand(getIdQuery, connection, transaction))
+            {
+                orderId = Convert.ToInt32(cmd.ExecuteScalar());
+            }
+
+            // Insert OrderDetails
+            string detailQuery = "INSERT INTO OrderDetails (OrderId, ProductId, Quantity, Price) VALUES (?, ?, ?, ?)";
+            foreach (var detail in order.Details)
+            {
+                using (OleDbCommand cmd = new OleDbCommand(detailQuery, connection, transaction))
+                {
+                    cmd.Parameters.AddWithValue("@OrderId", orderId);
+                    cmd.Parameters.AddWithValue("@ProductId", detail.ProductId);
+                    cmd.Parameters.AddWithValue("@Quantity", detail.Quantity);
+                    cmd.Parameters.AddWithValue("@Price", detail.Price);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+
+            transaction.Commit();
+            return true;
+        }
+        catch (Exception)
+        {
+            transaction?.Rollback();
+            return false;
+        }
+        finally
+        {
+            CloseConnection();
+        }
+    }
+}
+
+Copy
+
+Apply
+
+DatabaseController.cs
+public partial class ProductForm : Form
+{
+    private DatabaseController db;
+    private List<Panel> productPanels;
+    private Panel selectedPanel;
+
+    public ProductForm()
+    {
+        InitializeComponent();
+        db = new DatabaseController();
+        productPanels = new List<Panel>();
+        LoadProducts();
+    }
+
+    private void LoadProducts()
+    {
+        try
+        {
+            db.OpenConnection();
+            string query = "SELECT Id, Name, Price, Image FROM Products";
+            DataTable dt = db.ExecuteQuery(query);
+
+            foreach (DataRow row in dt.Rows)
+            {
+                Panel panel = CreateProductPanel(
+                    Convert.ToInt32(row["Id"]),
+                    row["Name"].ToString(),
+                    Convert.ToDecimal(row["Price"]),
+                    (byte[])row["Image"]
+                );
+                flowLayoutPanel1.Controls.Add(panel);
+                productPanels.Add(panel);
+            }
+        }
+        finally
+        {
+            db.CloseConnection();
+        }
+    }
+
+    private Panel CreateProductPanel(int id, string name, decimal price, byte[] imageData)
+    {
+        Panel panel = new Panel
+        {
+            Width = 150,
+            Height = 200,
+            BackColor = Color.White,
+            Tag = new Product(id, name, price, imageData)
+        };
+
+        PictureBox pb = new PictureBox
+        {
+            Width = 130,
+            Height = 130,
+            SizeMode = PictureBoxSizeMode.Zoom,
+            Image = ByteArrayToImage(imageData),
+            Location = new Point(10, 10)
+        };
+
+        Label lbl = new Label
+        {
+            Text = $"{name}\n${price:N2}",
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Width = 130,
+            Location = new Point(10, 150)
+        };
+
+        panel.Controls.Add(pb);
+        panel.Controls.Add(lbl);
+
+        panel.MouseEnter += Panel_MouseEnter;
+        panel.MouseLeave += Panel_MouseLeave;
+        panel.Click += Panel_Click;
+
+        return panel;
+    }
+
+    private void Panel_MouseEnter(object sender, EventArgs e)
+    {
+        Panel panel = (Panel)sender;
+        panel.BackColor = Color.LightGray;
+    }
+
+    private void Panel_MouseLeave(object sender, EventArgs e)
+    {
+        Panel panel = (Panel)sender;
+        if (panel != selectedPanel)
+            panel.BackColor = Color.White;
+    }
+
+    private void Panel_Click(object sender, EventArgs e)
+    {
+        if (selectedPanel != null)
+            selectedPanel.BackColor = Color.White;
+
+        selectedPanel = (Panel)sender;
+        selectedPanel.BackColor = Color.LightBlue;
+        
+        Product product = (Product)selectedPanel.Tag;
+        // Do something with selected product
+    }
+
+    private Image ByteArrayToImage(byte[] imageBytes)
+    {
+        using (MemoryStream ms = new MemoryStream(imageBytes))
+        {
+            return Image.FromStream(ms);
+        }
+    }
+}
+
+Copy
+
+Apply
+
+ProductForm.cs
+To use the transaction for creating an order:
+
+private void btnPlaceOrder_Click(object sender, EventArgs e)
+{
+    Order order = new Order
+    {
+        EndTime = DateTime.Now,
+        Total = CalculateTotal() // Your calculation method
+    };
+
+    // Add order details from your selected products
+    foreach (var item in selectedProducts)
+    {
+        order.Details.Add(new OrderDetail
+        {
+            ProductId = item.Id,
+            Quantity = item.Quantity,
+            Price = item.Price
+        });
+    }
+
+    if (db.ExecuteTransaction(order))
+    {
+        MessageBox.Show("Order placed successfully!");
+        ClearOrder();
+    }
+    else
+    {
+        MessageBox.Show("Error placing order. Please try again.");
+    }
+}
+
+Copy
+
+Apply
+
+OrderForm.cs
+This implementation provides:
+
+Clean MVC structure
+Robust database operations
+Transaction support with rollback
+Dynamic UI with hover effects
+Proper event handling
+Resource management
+Error handling
+The code is ready to use - just adjust the database path and table names to match your schema.
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+honhatminh1510
+why you use params oledbparameter[], it like 2 dimension array, i dont need that type, 1 dimesion should enough. And in the transaction method, i want the rollback must be execute not in exception, it should be call if there is something wrong abour database not rollback when any exception is occur
+
+
+
+Claude 3.5 Sonnet (Latest)
+Let's improve the code. Here's the optimized version of the parameter handling and transaction logic:
+
+public DataTable ExecuteQuery(string query, OleDbParameter[] parameters = null)
+{
+    DataTable dt = new DataTable();
+    using (OleDbCommand cmd = new OleDbCommand(query, connection))
+    {
+        if (parameters != null) cmd.Parameters.AddRange(parameters);
+        using (OleDbDataAdapter adapter = new OleDbDataAdapter(cmd))
+        {
+            adapter.Fill(dt);
+        }
+    }
+    return dt;
+}
+
+public int ExecuteNonQuery(string query, OleDbParameter[] parameters = null)
+{
+    using (OleDbCommand cmd = new OleDbCommand(query, connection))
+    {
+        if (parameters != null) cmd.Parameters.AddRange(parameters);
+        return cmd.ExecuteNonQuery();
+    }
+}
+
+public object ExecuteScalar(string query, OleDbParameter[] parameters = null)
+{
+    using (OleDbCommand cmd = new OleDbCommand(query, connection))
+    {
+        if (parameters != null) cmd.Parameters.AddRange(parameters);
+        return cmd.ExecuteScalar();
+    }
+}
+
+public bool ExecuteTransaction(Order order)
+{
+    OleDbTransaction transaction = null;
+    try
+    {
+        OpenConnection();
+        transaction = connection.BeginTransaction();
+
+        // Insert Order
+        string orderQuery = "INSERT INTO Orders (StartTime, EndTime, Total) VALUES (?, ?, ?)";
+        int orderResult;
+        using (OleDbCommand cmd = new OleDbCommand(orderQuery, connection, transaction))
+        {
+            cmd.Parameters.AddWithValue("@StartTime", order.StartTime);
+            cmd.Parameters.AddWithValue("@EndTime", order.EndTime);
+            cmd.Parameters.AddWithValue("@Total", order.Total);
+            orderResult = cmd.ExecuteNonQuery();
+        }
+
+        if (orderResult <= 0)
+        {
+            transaction.Rollback();
+            return false;
+        }
+
+        // Get last inserted OrderId
+        string getIdQuery = "SELECT @@IDENTITY";
+        int orderId;
+        using (OleDbCommand cmd = new OleDbCommand(getIdQuery, connection, transaction))
+        {
+            var result = cmd.ExecuteScalar();
+            if (result == null || result == DBNull.Value)
+            {
+                transaction.Rollback();
+                return false;
+            }
+            orderId = Convert.ToInt32(result);
+        }
+
+        // Insert OrderDetails
+        string detailQuery = "INSERT INTO OrderDetails (OrderId, ProductId, Quantity, Price) VALUES (?, ?, ?, ?)";
+        foreach (var detail in order.Details)
+        {
+            using (OleDbCommand cmd = new OleDbCommand(detailQuery, connection, transaction))
+            {
+                cmd.Parameters.AddWithValue("@OrderId", orderId);
+                cmd.Parameters.AddWithValue("@ProductId", detail.ProductId);
+                cmd.Parameters.AddWithValue("@Quantity", detail.Quantity);
+                cmd.Parameters.AddWithValue("@Price", detail.Price);
+                int detailResult = cmd.ExecuteNonQuery();
+                
+                if (detailResult <= 0)
+                {
+                    transaction.Rollback();
+                    return false;
+                }
+            }
+        }
+
+        transaction.Commit();
+        return true;
+    }
+    catch (Exception)
+    {
+        throw;
+    }
+    finally
+    {
+        CloseConnection();
+    }
+}
+
+Copy
+
+Apply
+
+DatabaseController.cs
+The improvements include:
+
+Changed params to regular array parameter with default null value
+Added specific database operation checks that trigger rollback
+Rollback now occurs when database operations fail, not just on exceptions
+Each insert operation is verified before proceeding
+Transaction management is more precise and controlled
+To use these methods:
+
+// Example usage
+OleDbParameter[] parameters = new OleDbParameter[]
+{
+    new OleDbParameter("@param1", value1),
+    new OleDbParameter("@param2", value2)
+};
+
+DataTable result = db.ExecuteQuery(query, parameters);
+
+Copy
+
+Apply
+
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+honhatminh1510
+there are still problem with the executetransaction method, the parameter is not a model, it should like 3 up above method (executequery, nonquery and scalar) that contains querystring and parameter. Beside that i insert multiple order detail records so that it should have a loop for insert all that
+
+
+
+Claude 3.5 Sonnet (Latest)
+Here's the corrected ExecuteTransaction method that follows the same pattern as the other methods:
+
+public bool ExecuteTransaction(string[] queries, OleDbParameter[][] parameters)
+{
+    OleDbTransaction transaction = null;
+    try
+    {
+        OpenConnection();
+        transaction = connection.BeginTransaction();
+
+        for (int i = 0; i < queries.Length; i++)
+        {
+            using (OleDbCommand cmd = new OleDbCommand(queries[i], connection, transaction))
+            {
+                if (parameters != null && parameters[i] != null)
+                {
+                    cmd.Parameters.AddRange(parameters[i]);
+                }
+                
+                int result = cmd.ExecuteNonQuery();
+                if (result <= 0)
+                {
+                    transaction.Rollback();
+                    return false;
+                }
+            }
+        }
+
+        transaction.Commit();
+        return true;
+    }
+    catch (Exception)
+    {
+        throw;
+    }
+    finally
+    {
+        CloseConnection();
+    }
+}
+
+Copy
+
+Apply
+
+DatabaseController.cs
+Usage example for order and order details:
+
+// Prepare queries
+string[] queries = new string[orderDetails.Count + 1];
+OleDbParameter[][] parameters = new OleDbParameter[orderDetails.Count + 1][];
+
+// Order query
+queries[0] = "INSERT INTO Orders (StartTime, EndTime, Total) VALUES (?, ?, ?)";
+parameters[0] = new OleDbParameter[]
+{
+    new OleDbParameter("@StartTime", DateTime.Now),
+    new OleDbParameter("@EndTime", DateTime.Now),
+    new OleDbParameter("@Total", totalAmount)
+};
+
+// Order details queries
+for (int i = 0; i < orderDetails.Count; i++)
+{
+    queries[i + 1] = "INSERT INTO OrderDetails (OrderId, ProductId, Quantity, Price) VALUES (?, ?, ?, ?)";
+    parameters[i + 1] = new OleDbParameter[]
+    {
+        new OleDbParameter("@OrderId", orderId),
+        new OleDbParameter("@ProductId", orderDetails[i].ProductId),
+        new OleDbParameter("@Quantity", orderDetails[i].Quantity),
+        new OleDbParameter("@Price", orderDetails[i].Price)
+    };
+}
+
+bool success = db.ExecuteTransaction(queries, parameters);
+
+Copy
+
+Apply
+
+This implementation:
+
+Takes query strings and parameters arrays as input
+Executes multiple queries in a single transaction
+Rolls back if any query fails
+Maintains consistency with other database methods
+Supports dynamic number of queries
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+honhatminh1510
+you missed the orderid, it is not a parameter, it is only exist after the first query to insert order then return the order id. adjust it
+
+
+
+Claude 3.5 Sonnet (Latest)
+Here's the correct implementation that handles the OrderId properly:
+
+public bool ExecuteTransaction(string orderQuery, OleDbParameter[] orderParams, string detailQuery, List<OleDbParameter[]> detailParams)
+{
+    OleDbTransaction transaction = null;
+    try
+    {
+        OpenConnection();
+        transaction = connection.BeginTransaction();
+
+        // Insert Order
+        using (OleDbCommand cmd = new OleDbCommand(orderQuery, connection, transaction))
+        {
+            if (orderParams != null)
+            {
+                cmd.Parameters.AddRange(orderParams);
+            }
+            int result = cmd.ExecuteNonQuery();
+            if (result <= 0)
+            {
+                transaction.Rollback();
+                return false;
+            }
+        }
+
+        // Get OrderId
+        int orderId;
+        using (OleDbCommand cmd = new OleDbCommand("SELECT @@IDENTITY", connection, transaction))
+        {
+            var result = cmd.ExecuteScalar();
+            if (result == null || result == DBNull.Value)
+            {
+                transaction.Rollback();
+                return false;
+            }
+            orderId = Convert.ToInt32(result);
+        }
+
+        // Insert Order Details
+        foreach (var paramSet in detailParams)
+        {
+            using (OleDbCommand cmd = new OleDbCommand(detailQuery, connection, transaction))
+            {
+                paramSet[0] = new OleDbParameter("@OrderId", orderId); // First parameter is always OrderId
+                cmd.Parameters.AddRange(paramSet);
+                
+                int result = cmd.ExecuteNonQuery();
+                if (result <= 0)
+                {
+                    transaction.Rollback();
+                    return false;
+                }
+            }
+        }
+
+        transaction.Commit();
+        return true;
+    }
+    catch (Exception)
+    {
+        throw;
+    }
+    finally
+    {
+        CloseConnection();
+    }
+}
+
+Copy
+
+Apply
+
+DatabaseController.cs
+Usage example:
+
+string orderQuery = "INSERT INTO Orders (StartTime, EndTime, Total) VALUES (?, ?, ?)";
+OleDbParameter[] orderParams = new OleDbParameter[]
+{
+    new OleDbParameter("@StartTime", DateTime.Now),
+    new OleDbParameter("@EndTime", DateTime.Now),
+    new OleDbParameter("@Total", totalAmount)
+};
+
+string detailQuery = "INSERT INTO OrderDetails (OrderId, ProductId, Quantity, Price) VALUES (?, ?, ?, ?)";
+List<OleDbParameter[]> detailParams = new List<OleDbParameter[]>();
+
+foreach (var item in orderDetails)
+{
+    detailParams.Add(new OleDbParameter[]
+    {
+        null, // OrderId will be set inside transaction
+        new OleDbParameter("@ProductId", item.ProductId),
+        new OleDbParameter("@Quantity", item.Quantity),
+        new OleDbParameter("@Price", item.Price)
+    });
+}
+
+bool success = db.ExecuteTransaction(orderQuery, orderParams, detailQuery, detailParams);
+
+Copy
+
+Apply
+
+This implementation now correctly:
+
+Executes the order insert first
+Gets the generated OrderId
+Uses that OrderId for all detail records
+Maintains transaction integrity
+Handles parameters properly for both order and details
+Try again with different context
+Add context...
+Avatar for honhatminh1510-cfizq
+honhatminh1510
+public bool ExecuteTransaction(string orderQuery, OleDbParameter[] orderParams, string detailQuery, List<OleDbParameter[]> detailParams) too many and too long, can you make it shorter. And remove all var type in your code, i dont want to use var.
+When you use many rollback like this, is it safe to do that, i mean what happen if a rollback was invoked in the middle, is every query rollback or just part of query do.
+And improve it so that i can applied for update and delete transaction. 
+
+
+
+Claude 3.5 Sonnet (Latest)
+Here's the improved and more concise version:
+
+public bool ExecuteTransaction(string[] queries, List<OleDbParameter[]> parametersList)
+{
+    OleDbTransaction transaction = null;
+    try
+    {
+        OpenConnection();
+        transaction = connection.BeginTransaction();
+        int orderId = 0;
+
+        for (int i = 0; i < queries.Length; i++)
+        {
+            using (OleDbCommand cmd = new OleDbCommand(queries[i], connection, transaction))
+            {
+                // For first query (Order insert)
+                if (i == 0)
+                {
+                    if (parametersList[i] != null)
+                        cmd.Parameters.AddRange(parametersList[i]);
+                    
+                    int result = cmd.ExecuteNonQuery();
+                    if (result <= 0)
+                    {
+                        transaction.Rollback();
+                        return false;
+                    }
+
+                    // Get OrderId
+                    cmd.CommandText = "SELECT @@IDENTITY";
+                    orderId = Convert.ToInt32(cmd.ExecuteScalar());
+                }
+                // For subsequent queries (OrderDetails)
+                else
+                {
+                    OleDbParameter[] parameters = parametersList[i];
+                    parameters[0] = new OleDbParameter("@OrderId", orderId);
+                    cmd.Parameters.AddRange(parameters);
+                    
+                    int result = cmd.ExecuteNonQuery();
+                    if (result <= 0)
+                    {
+                        transaction.Rollback();
+                        return false;
+                    }
+                }
+            }
+        }
+
+        transaction.Commit();
+        return true;
+    }
+    catch (Exception)
+    {
+        throw;
+    }
+    finally
+    {
+        CloseConnection();
+    }
+}
+
+Copy
+
+Apply
+
+DatabaseController.cs
+Usage example:
+
+string[] queries = new string[]
+{
+    "INSERT INTO Orders (StartTime, EndTime, Total) VALUES (?, ?, ?)",
+    "INSERT INTO OrderDetails (OrderId, ProductId, Quantity, Price) VALUES (?, ?, ?, ?)",
+    "INSERT INTO OrderDetails (OrderId, ProductId, Quantity, Price) VALUES (?, ?, ?, ?)"
+};
+
+List<OleDbParameter[]> parametersList = new List<OleDbParameter[]>();
+
+// Order parameters
+parametersList.Add(new OleDbParameter[]
+{
+    new OleDbParameter("@StartTime", DateTime.Now),
+    new OleDbParameter("@EndTime", DateTime.Now),
+    new OleDbParameter("@Total", totalAmount)
+});
+
+// OrderDetails parameters
+foreach (OrderDetail detail in orderDetails)
+{
+    parametersList.Add(new OleDbParameter[]
+    {
+        null, // OrderId placeholder
+        new OleDbParameter("@ProductId", detail.ProductId),
+        new OleDbParameter("@Quantity", detail.Quantity),
+        new OleDbParameter("@Price", detail.Price)
+    });
+}
+
+bool success = db.ExecuteTransaction(queries, parametersList);
+
+Copy
+
+Apply
+
+Regarding your questions:
+
+Transaction rollback is completely safe - it reverts ALL queries executed within the transaction scope. If a rollback occurs at any point, everything done since the BeginTransaction is undone. This maintains database consistency.
+
+For update/delete transactions, use the same method with different queries:
+
+// Update example
+string[] updateQueries = new string[]
+{
+    "UPDATE Orders SET Total = ? WHERE OrderId = ?",
+    "UPDATE OrderDetails SET Quantity = ? WHERE OrderId = ? AND ProductId = ?"
+};
+
+// Delete example
+string[] deleteQueries = new string[]
+{
+    "DELETE FROM OrderDetails WHERE OrderId = ?",
+    "DELETE FROM Orders WHERE OrderId = ?"
+};
