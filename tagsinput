@@ -119,3 +119,74 @@ string[] deleteQueries = new string[]
     "DELETE FROM OrderDetails WHERE OrderId = ?",
     "DELETE FROM Orders WHERE OrderId = ?"
 };
+
+
+
+
+Claude 3.5 Sonnet (Latest)
+Here's the clean version with a single return point and catch block without transaction handling:
+
+public bool ExecuteTransaction(string[] queries, List<OleDbParameter[]> parametersList)
+{
+    OleDbTransaction transaction = null;
+    bool success = true;
+    try
+    {
+        OpenConnection();
+        transaction = connection.BeginTransaction();
+        int orderId = 0;
+
+        // Process Order
+        using (OleDbCommand cmd = new OleDbCommand(queries[0], connection, transaction))
+        {
+            if (parametersList[0] != null)
+                cmd.Parameters.AddRange(parametersList[0]);
+            
+            if (cmd.ExecuteNonQuery() <= 0)
+            {
+                success = false;
+                transaction.Rollback();
+            }
+            else
+            {
+                cmd.CommandText = "SELECT @@IDENTITY";
+                orderId = Convert.ToInt32(cmd.ExecuteScalar());
+            }
+        }
+
+        // Process Order Details
+        if (success)
+        {
+            for (int i = 1; i < queries.Length; i++)
+            {
+                using (OleDbCommand cmd = new OleDbCommand(queries[i], connection, transaction))
+                {
+                    OleDbParameter[] parameters = parametersList[i];
+                    parameters[0] = new OleDbParameter("@OrderId", orderId);
+                    cmd.Parameters.AddRange(parameters);
+                    
+                    if (cmd.ExecuteNonQuery() <= 0)
+                    {
+                        success = false;
+                        transaction.Rollback();
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (success)
+            transaction.Commit();
+    }
+    catch (Exception)
+    {
+        success = false;
+        throw;
+    }
+    finally
+    {
+        CloseConnection();
+    }
+    
+    return success;
+}
