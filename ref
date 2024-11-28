@@ -54,3 +54,70 @@ Object notation can provide more flexibility in data handling
 You can verify the data structure in JavaScript using:
 
 console.log(chartData);
+
+
+public function getBonusValue($lstBonusUnit, $idTaiKhoan, $ngaythuchien) 
+{
+    // First try to find employee-specific bonus
+    $employeeBonus = $lstBonusUnit
+        ->where('LoaiDonViThuong', 2)
+        ->where('IDTaiKhoan', $idTaiKhoan)
+        ->where('NgayApDung', '<', $ngaythuchien)
+        ->sortByDesc('NgayApDung')
+        ->first();
+
+    if ($employeeBonus) {
+        return $employeeBonus->DonViThuong;
+    }
+
+    // If no employee bonus found, get default bonus
+    $defaultBonus = $lstBonusUnit
+        ->where('LoaiDonViThuong', 1)
+        ->where('NgayApDung', '<', $ngaythuchien)
+        ->sortByDesc('NgayApDung')
+        ->first();
+
+    return $defaultBonus ? $defaultBonus->DonViThuong : 0;
+}
+
+Copy
+
+Apply
+
+YourFile.php
+This improved version is faster because:
+
+Uses chained collection methods instead of multiple loops
+Reduces the number of iterations by filtering early
+Uses where() conditions in sequence to narrow down results quickly
+Sorts only the filtered results
+Returns early when employee bonus is found
+Eliminates temporary variables
+Uses null coalescing operator for cleaner default value handling
+For even better performance, you could modify your database query to:
+
+$lstBonusUnit = Bonus::where(function($query) use ($idTaiKhoan, $ngaythuchien) {
+    $query->where('LoaiDonViThuong', 2)
+          ->where('IDTaiKhoan', $idTaiKhoan)
+          ->where('NgayApDung', '<', $ngaythuchien)
+    ->orWhere(function($query) use ($ngaythuchien) {
+        $query->where('LoaiDonViThuong', 1)
+              ->where('NgayApDung', '<', $ngaythuchien);
+    });
+})
+->orderBy('LoaiDonViThuong', 'desc')
+->orderBy('NgayApDung', 'desc')
+->get();
+
+Copy
+
+Apply
+
+YourController.php
+This database-level optimization will:
+
+Reduce the data transferred from database
+Leverage database indexing
+Handle sorting at database level
+Return only relevant records
+The combination of optimized database query and streamlined collection handling will give you the best performance!
