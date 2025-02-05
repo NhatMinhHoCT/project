@@ -1,175 +1,187 @@
-<div class="row mb-4">
-  <div class="col-md-3">
-    <select class="form-control select2" id="monthSelect">
-      @foreach (['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] as $index => $month)
-      <option value="{{ $index + 1 }}">{{ $month }}</option>
-      @endforeach
-    </select>
-  </div>
-  <div class="col-md-3">
-    <select class="form-control select2" id="yearSelect">
-      @for ($i = date('Y'); $i >= date('Y') - 10; $i--)
-      <option value="{{ $i }}">{{ $i }}</option>
-      @endfor
-    </select>
-  </div>
-  <div class="col-md-6 text-end">
-    <div class="dropdown">
-      <button class="btn btn-primary dropdown-toggle" type="button" id="filterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-        Filter
-      </button>
-      <div class="dropdown-menu p-3" aria-labelledby="filterDropdown" style="width: 300px;">
-        <form id="filterForm">
-          <div class="mb-3">
-            <label for="employeeName" class="form-label">Employee Name</label>
-            <input type="text" class="form-control tagsinput" id="employeeName" name="employeeName">
-          </div>
-          <div class="mb-3">
-            <label for="employeeCode" class="form-label">Employee Code</label>
-            <input type="text" class="form-control tagsinput" id="employeeCode" name="employeeCode">
-          </div>
-          <div class="mb-3">
-            <label for="projectName" class="form-label">Project Name</label>
-            <select class="form-control select2" id="projectName" name="projectName">
-              <option value="">Select a project</option>
-              @foreach($projects as $project)
-              <option value="{{ $project['id'] }}">{{ $project['name'] }}</option>
-              @endforeach
-            </select>
-          </div>
-          <div class="mb-3">
-            <label for="projectStage" class="form-label">Project Stage</label>
-            <select class="form-control select2" id="projectStage" name="projectStage" disabled>
-              <option value="">Select a stage</option>
-            </select>
-          </div>
-          <div class="mb-3">
-            <label for="projectWork" class="form-label">Project Work</label>
-            <select class="form-control select2" id="projectWork" name="projectWork" disabled>
-              <option value="">Select work</option>
-            </select>
-          </div>
-          <button type="button" class="btn btn-primary btn-sm" id="applyFilter">Apply Filter</button>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
+User Management & Authentication
+interface AuthService {
+  register(user: UserDTO): Promise<User>;
+  login(credentials: LoginDTO): Promise<string>; // Returns JWT
+  logout(userId: string): Promise<void>;
+  resetPassword(email: string): Promise<void>;
+  verifyEmail(token: string): Promise<void>;
+  refreshToken(token: string): Promise<string>;
+  updateProfile(userId: string, data: ProfileDTO): Promise<User>;
+  twoFactorAuthentication(userId: string, code: string): Promise<boolean>;
+}
 
-<div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-  <table class="table table-striped table-bordered">
-    <thead>
-      <tr>
-        <th class="sticky-top bg-white">Employee Name</th>
-        <th class="sticky-top bg-white">Employee Code</th>
-        <th class="sticky-top bg-white">Total Bonus</th>
-        @for ($i = 1; $i <= 31; $i++)
-          <th class="sticky-top bg-white" colspan="4">Day {{ $i }}</th>
-          @endfor
-      </tr>
-      <tr>
-        <th colspan="3"></th>
-        @for ($i = 1; $i <= 31; $i++)
-          <th>Target</th>
-          <th>Actual</th>
-          <th>Diff</th>
-          <th>Bonus</th>
-          @endfor
-      </tr>
-    </thead>
-    <tbody>
-      @foreach ($data as $employee)
-      <tr>
-        <td>{{ $employee['name'] }}</td>
-        <td>{{ $employee['code'] }}</td>
-        <td>${{ number_format($employee['total_bonus'], 2) }}</td>
-        @foreach ($employee['daily_bonus'] as $index => $bonus)
-        <td>{{ $bonus['target_quantity'] }}</td>
-        <td>{{ $bonus['actual_quantity'] }}</td>
-        <td>{{ $bonus['difference'] }}</td>
-        <td>${{ number_format($bonus['bonus'], 2) }}</td>
-        @endforeach
-      </tr>
-      @endforeach
-    </tbody>
-  </table>
-</div>
+Copy
 
-<script>
-  $(document).ready(function() {
-    $('.select2').select2({
-      dropdownParent: $('#filterDropdown')
-    });
-    $('.tagsinput').tagsinput();
+Apply
 
-    // Prevent dropdown from closing when clicking inside
-    $('.dropdown-menu').on('click', function(e) {
-      e.stopPropagation();
-    });
+auth.service.ts
+Data Management & CRUD Operations
+interface DataService<T> {
+  create(data: T): Promise<T>;
+  read(id: string): Promise<T>;
+  update(id: string, data: Partial<T>): Promise<T>;
+  delete(id: string): Promise<void>;
+  list(filters: FilterDTO): Promise<T[]>;
+  search(query: string): Promise<T[]>;
+  paginate(page: number, limit: number): Promise<PaginatedResult<T>>;
+  sort(field: keyof T, order: 'asc' | 'desc'): Promise<T[]>;
+}
 
-    $('#projectName').change(function() {
-      var projectId = $(this).val();
-      if (projectId) {
-        $('#projectStage').prop('disabled', false);
-        $.ajax({
-          url: '/bonus/stages',
-          method: 'GET',
-          data: {
-            project_id: projectId
-          },
-          success: function(response) {
-            var stageSelect = $('#projectStage');
-            stageSelect.empty().append('<option value="">Select a stage</option>');
-            $.each(response, function(key, value) {
-              stageSelect.append('<option value="' + value.id + '">' + value.name + '</option>');
-            });
-            stageSelect.trigger('change');
-          }
-        });
-      } else {
-        $('#projectStage, #projectWork').prop('disabled', true).empty().append('<option value="">Select an option</option>');
-      }
-    });
+Copy
 
-    $('#projectStage').change(function() {
-      var projectId = $('#projectName').val();
-      var stageId = $(this).val();
-      if (stageId) {
-        $('#projectWork').prop('disabled', false);
-        $.ajax({
-          url: '/bonus/work',
-          method: 'GET',
-          data: {
-            project_id: projectId,
-            stage_id: stageId
-          },
-          success: function(response) {
-            var workSelect = $('#projectWork');
-            workSelect.empty().append('<option value="">Select work</option>');
-            $.each(response, function(key, value) {
-              workSelect.append('<option value="' + value.id + '">' + value.name + '</option>');
-            });
-            workSelect.trigger('change');
-          }
-        });
-      } else {
-        $('#projectWork').prop('disabled', true).empty().append('<option value="">Select work</option>');
-      }
-    });
+Apply
 
-    $('#applyFilter').click(function() {
-      var filterData = $('#filterForm').serialize();
-      // Fetch filtered data via AJAX and update the table
-      // updateMonthlyBonusTable(filterData);
-    });
+data.service.ts
+File Management
+interface FileService {
+  upload(file: File, metadata: FileMetadata): Promise<string>;
+  download(fileId: string): Promise<Buffer>;
+  delete(fileId: string): Promise<void>;
+  getMetadata(fileId: string): Promise<FileMetadata>;
+  listFiles(userId: string): Promise<File[]>;
+  generateShareLink(fileId: string): Promise<string>;
+  validateFileType(file: File): Promise<boolean>;
+}
 
-    $('#monthSelect, #yearSelect').change(function() {
-      // Fetch data for the selected month and year
-      // updateMonthlyBonusTable();
-    });
+Copy
 
-    function updateMonthlyBonusTable(filterData) {
-      // Implement AJAX call to fetch and update table data
-    }
-  });
-</script>
+Apply
+
+file.service.ts
+Communication & Notifications
+interface NotificationService {
+  sendEmail(to: string, template: EmailTemplate, data: any): Promise<void>;
+  sendPushNotification(userId: string, notification: PushNotification): Promise<void>;
+  sendSMS(phoneNumber: string, message: string): Promise<void>;
+  subscribeToTopic(userId: string, topic: string): Promise<void>;
+  markAsRead(notificationId: string): Promise<void>;
+  getUnreadCount(userId: string): Promise<number>;
+}
+
+Copy
+
+Apply
+
+notification.service.ts
+Security & Authorization
+interface SecurityService {
+  validateToken(token: string): Promise<boolean>;
+  checkPermissions(userId: string, resource: string): Promise<boolean>;
+  generateApiKey(userId: string): Promise<string>;
+  revokeApiKey(apiKeyId: string): Promise<void>;
+  auditLog(action: string, userId: string, details: any): Promise<void>;
+  rateLimitCheck(ip: string): Promise<boolean>;
+  sanitizeInput(data: any): Promise<any>;
+}
+
+Copy
+
+Apply
+
+security.service.ts
+Analytics & Monitoring
+interface AnalyticsService {
+  trackEvent(eventName: string, data: any): Promise<void>;
+  getUserMetrics(userId: string): Promise<UserMetrics>;
+  generateReport(startDate: Date, endDate: Date): Promise<Report>;
+  getActiveUsers(): Promise<number>;
+  trackPageView(page: string, userId?: string): Promise<void>;
+  getErrorLogs(): Promise<ErrorLog[]>;
+  performanceMetrics(): Promise<PerformanceData>;
+}
+
+Copy
+
+Apply
+
+analytics.service.ts
+Integration & API Management
+interface IntegrationService {
+  connectThirdParty(provider: string, credentials: any): Promise<void>;
+  webhookHandler(provider: string, payload: any): Promise<void>;
+  syncData(source: string, destination: string): Promise<void>;
+  validateWebhook(signature: string, payload: any): Promise<boolean>;
+  getIntegrationStatus(integrationId: string): Promise<Status>;
+}
+
+Copy
+
+Apply
+
+integration.service.ts
+Cache & Performance
+interface CacheService {
+  set(key: string, value: any, ttl?: number): Promise<void>;
+  get(key: string): Promise<any>;
+  delete(key: string): Promise<void>;
+  flush(): Promise<void>;
+  getStats(): Promise<CacheStats>;
+  optimizeCache(): Promise<void>;
+}
+
+Copy
+
+Apply
+
+cache.service.ts
+Payment & Subscription
+interface PaymentService {
+  processPayment(userId: string, amount: number): Promise<PaymentResult>;
+  createSubscription(userId: string, planId: string): Promise<Subscription>;
+  cancelSubscription(subscriptionId: string): Promise<void>;
+  refund(paymentId: string): Promise<RefundResult>;
+  getInvoices(userId: string): Promise<Invoice[]>;
+  updatePaymentMethod(userId: string, paymentMethod: PaymentMethod): Promise<void>;
+}
+
+Copy
+
+Apply
+
+payment.service.ts
+Search & Filtering
+interface SearchService {
+  search(query: string, filters: SearchFilters): Promise<SearchResult[]>;
+  buildIndex(data: any[]): Promise<void>;
+  suggest(partial: string): Promise<string[]>;
+  facetedSearch(query: string, facets: Facet[]): Promise<FacetedResult>;
+  optimizeSearchIndex(): Promise<void>;
+}
+
+Copy
+
+Apply
+
+search.service.ts
+To implement these functions, you would need to:
+
+Set up API endpoints:
+npm install express @types/express
+
+Copy
+
+Execute
+
+Add database connectivity:
+npm install mongoose typeorm
+
+Copy
+
+Execute
+
+Add authentication:
+npm install passport jwt-simple
+
+Copy
+
+Execute
+
+Add file handling:
+npm install multer @types/multer
+
+Copy
+
+Execute
+
+Add validation:
+npm install class-validator class-transformer
